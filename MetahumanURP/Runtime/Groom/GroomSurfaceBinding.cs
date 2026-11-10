@@ -252,7 +252,6 @@ namespace MetaHuman.Groom
             return Quaternion.LookRotation(normal, Vector3.Cross(normal, tangent));
         }
 
-        /// <summary>Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5), with barycentrics.</summary>
         /// <summary>
         /// Exact closest candidate triangle through a uniform grid: each triangle is listed in every cell its bounds
         /// overlap, and rings of cells around the query are searched outwards until the best distance is no larger
@@ -353,6 +352,7 @@ namespace MetaHuman.Groom
             }
         }
 
+        /// <summary>Closest point on triangle abc to p (Ericson, Real-Time Collision Detection 5.1.5), with barycentrics.</summary>
         public static Vector3 Closest(Vector3 p, Vector3 a, Vector3 b, Vector3 c, out Vector3 barycentric)
         {
             Vector3 ab = b - a, ac = c - a, ap = p - a;

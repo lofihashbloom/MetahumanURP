@@ -105,7 +105,14 @@ namespace MetaHuman.Groom
         void LateUpdate()
         {
             if ((!Application.IsPlaying(gameObject) && !previewInEditor) || !face || targets.Length == 0) return;
-            UpdateNow();
+            // A failing binding (a collapsed attachment triangle, a changed face mesh) fails the same way every frame:
+            // report it once and stop, instead of logging an exception per frame.
+            try { UpdateNow(); }
+            catch (InvalidOperationException e)
+            {
+                Debug.LogError("CardSurfaceDeformer on '" + name + "' disabled: " + e.Message, this);
+                enabled = false;
+            }
         }
 
         public void Release()

@@ -157,7 +157,16 @@ namespace MetaHuman.Rendering
                 desc.depthBufferBits = DepthBits.None; desc.bindTextureMS = false;
                 var diffuse = graph.CreateTexture(desc);
                 desc.name = "MetaHuman surface normal + eye depth";
+                // Eye depth needs more than half-float precision: at 2 to 8 m a half step is 2 to 4 mm, coarser than the
+                // millimetre depth rejection, which bands. 32-bit where the platform renders to it at this sample count.
+                int guideSamples = (int)desc.msaaSamples;
+                var guideUsage = guideSamples >= 8 ? GraphicsFormatUsage.MSAA8x : guideSamples >= 4 ? GraphicsFormatUsage.MSAA4x
+                    : guideSamples >= 2 ? GraphicsFormatUsage.MSAA2x : GraphicsFormatUsage.Render;
+                if (SystemInfo.IsFormatSupported(GraphicsFormat.R32G32B32A32_SFloat, GraphicsFormatUsage.Render)
+                    && SystemInfo.IsFormatSupported(GraphicsFormat.R32G32B32A32_SFloat, guideUsage))
+                    desc.colorFormat = GraphicsFormat.R32G32B32A32_SFloat;
                 var guide = graph.CreateTexture(desc);
+                desc.colorFormat = GraphicsFormat.R16G16B16A16_SFloat;
                 desc.name = "MetaHuman skin diffuse reflectance";
                 var albedo = graph.CreateTexture(desc);
                 owner.lastRecordedSingleDraw = singleDraw;

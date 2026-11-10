@@ -86,7 +86,11 @@ def generate(args):
     if args.status=='source-input' and not args.source_receipt:raise ValueError('source-input requires explicit source receipt.')
     if args.eta<=1 or not 0<args.beta_n<=1:raise ValueError('eta>1 and betaN in(0,1] required.')
     if not 32<=args.width<=2048 or not 16<=args.height<=1024 or not 16<=args.quadrature<=512:raise ValueError('Grid/quadrature outside bounded prototype domain.')
-    scale=.265*args.beta_n+1.194*args.beta_n**2+5.372*args.beta_n**22 # Chiang Eq8
+    # Chiang et al. 2016, Eq. 8 gives the logistic scale as sqrt(pi/8) x this polynomial. The lookups shipped with the
+    # package were generated without that factor (--logistic-factor 1), so their azimuthal lobes are about 1.6x wider
+    # than the paper's; the hair look was tuned and validated on those tables. Pass --logistic-factor 0.6267 for the
+    # paper's width (the tables and anything fitted to them must then be regenerated together).
+    scale=args.logistic_factor*(.265*args.beta_n+1.194*args.beta_n**2+5.372*args.beta_n**22)
     h,w=np.polynomial.legendre.leggauss(args.quadrature)
     table=np.zeros((4,args.height,args.width,4),np.float64);expected=[]
     for y,theta in enumerate(np.linspace(0,PI*.5,args.height)):
@@ -147,6 +151,7 @@ if __name__=='__main__':
     group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--sigma-a',nargs=3,type=float);group.add_argument('--pigments',nargs=2,type=float);group.add_argument('--reflectance',nargs=3,type=float)
     parser.add_argument('--eta',type=float,default=1.55);parser.add_argument('--beta-n',type=float,default=.37)
+    parser.add_argument('--logistic-factor',type=float,default=1.0,help='multiplier on the Chiang Eq. 8 polynomial; 1.0 reproduces the shipped tables, 0.6267 (sqrt(pi/8)) is the published scale')
     parser.add_argument('--width',type=int,default=512);parser.add_argument('--height',type=int,default=128);parser.add_argument('--quadrature',type=int,default=64)
     parser.add_argument('--name',required=True);parser.add_argument('--status',choices=['unit-validation','diagnostic','source-input'],required=True)
     parser.add_argument('--source-receipt',type=Path);parser.add_argument('--output',type=Path,required=True)

@@ -9,14 +9,18 @@ asset_path = os.environ['METAHUMAN_GROOM_ASSET']
 OUT = Path(os.environ['METAHUMAN_GROOM_EXPORT_DIR']).resolve()
 OUT.mkdir(parents=True, exist_ok=True)
 package = asset_path.split('.')[0]
-assert package.startswith('/Game/'), 'Only project-owned /Game grooms are supported by this helper'
+if not package.startswith('/Game/'):
+    raise RuntimeError('Only project-owned /Game grooms are supported by this helper')
 source_file = Path(unreal.Paths.project_content_dir()) / (package[len('/Game/'):] + '.uasset')
 filename = package.rsplit('/', 1)[-1] + '.mhgroom'
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 before = sha(source_file)
 groom = unreal.load_asset(asset_path)
-assert groom, asset_path
-assert unreal.GroomDataExportLibrary.export_groom_data(asset_path, str(OUT / filename))
+if not groom:
+    raise RuntimeError('Groom asset not found: ' + asset_path)
+# Not an assert: python -O would remove the export call itself.
+if not unreal.GroomDataExportLibrary.export_groom_data(asset_path, str(OUT / filename)):
+    raise RuntimeError('Groom export failed: ' + asset_path)
 rendering = []
 for group in groom.get_editor_property('hair_groups_rendering'):
     item = {}
@@ -29,7 +33,8 @@ for group in groom.get_editor_property('hair_groups_rendering'):
         except Exception as e: item[name] = str(e)
     rendering.append(item)
 after = sha(source_file)
-assert before == after, 'Source asset was unexpectedly changed'
+if before != after:
+    raise RuntimeError('Source asset was unexpectedly changed')
 receipt = dict(source=asset_path, sourceSha256=before, sourceUnchanged=True,
     binarySha256=sha(OUT/filename), engine=unreal.SystemLibrary.get_engine_version(),
     format='MHGRM001', coordinateSpace='Original groom asset-local centimetres; no renderer geometry or groom-binding transform baked',

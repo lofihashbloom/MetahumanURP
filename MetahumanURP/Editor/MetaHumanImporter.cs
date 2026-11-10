@@ -111,6 +111,7 @@ namespace MetaHuman.Editor
             report.warnings.Add("Prototype shaders approximate scattering, cornea and hair; render parity is unmeasured.");
             report.warnings.Add("Strand grooms, animated delta-map rendering and automatic LOD assembly are not implemented.");
             var textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
+            var pendingTextures = new List<(string source, string path)>();
             foreach (var t in data.textures)
             {
                 string path = ResolveAsset(manifestPath, t.file);
@@ -140,8 +141,20 @@ namespace MetaHuman.Editor
                 importer.mipmapEnabled = !t.derived;
                 if (t.derived) importer.wrapMode = TextureWrapMode.Clamp;
                 importer.isReadable = false;
-                importer.SaveAndReimport();
-                textures[t.source] = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                // Settings are written now and the textures imported together below: one reimport per texture made a
+                // character import many times slower than a single batch.
+                EditorUtility.SetDirty(importer);
+                AssetDatabase.WriteImportSettingsIfDirty(path);
+                pendingTextures.Add((t.source, path));
+            }
+            AssetDatabase.StartAssetEditing();
+            try { foreach (var (_, path) in pendingTextures) AssetDatabase.ImportAsset(path); }
+            finally { AssetDatabase.StopAssetEditing(); }
+            foreach (var (source, path) in pendingTextures)
+            {
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (!texture) throw new InvalidDataException("Texture failed to import: " + path);
+                textures[source] = texture;
             }
             var materials = new Dictionary<string, Material>(StringComparer.Ordinal);
             foreach (var record in data.materials)

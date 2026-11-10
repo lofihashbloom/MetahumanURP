@@ -70,7 +70,12 @@ def build(groom, lights, output, resolution=128, diameter=.00012, max_points=64,
     u = np.zeros(len(pts)) if taper is None else np.fromfile(taper, dtype=np.uint8).astype(float) / 255
     if len(u) != len(pts):
         raise SystemExit('Taper file must have one byte per groom point')
-    d = diameter * (1 - (1 - tip_scale) * u[ids]) * pts[ids, 3] / maxwidth
+    # Relative width per point. Exports without any width attribute carry zeros: use the full diameter then,
+    # instead of 0 / 0 (NaN passes the conservation check below, because comparisons with NaN are false).
+    widths = pts[ids, 3].astype(float)
+    relative = widths / maxwidth if maxwidth > 0 else np.ones(len(widths))
+    relative[~np.isfinite(relative) | (relative <= 0)] = 1.0
+    d = diameter * (1 - (1 - tip_scale) * u[ids]) * relative
     p0, p1 = world[:-1][valid], world[1:][valid]
     d0, d1 = d[:-1][valid], d[1:][valid]
     seg = p1 - p0
@@ -118,8 +123,8 @@ def build(groom, lights, output, resolution=128, diameter=.00012, max_points=64,
         tau = deposit(coords, angular / cell, resolution)
         prefix = np.concatenate([np.zeros((1, resolution, resolution)), np.cumsum(tau, axis=0)])
         mass = tau.sum() * cell
-        if abs(mass / angular.sum() - 1) > 1e-9:
-            raise SystemExit('Projected-area conservation failed')
+        if not np.isfinite(prefix).all() or not np.isfinite(mass) or not abs(mass / angular.sum() - 1) <= 1e-9:
+            raise SystemExit('Projected-area conservation failed or the field is not finite')
         name = '%s-OpticalDepth%d.f32' % (light['name'], resolution)
         prefix.astype('<f4').tofile(out / name)
         rows.append({'name': light['name'], 'file': name, 'sha256': sha(out / name), 'resolution': resolution,

@@ -148,6 +148,8 @@ namespace MetaHuman.Groom
             hasApplied = false;
         }
 
+        static readonly System.Collections.Generic.List<Material> sharedScratch = new System.Collections.Generic.List<Material>();
+
         void ForEachBlock(Action<MaterialPropertyBlock> set)
         {
             if (renderers == null) return;
@@ -156,7 +158,8 @@ namespace MetaHuman.Groom
             {
                 if (!r) continue;
                 // Per material index, as GroomShadowVolume writes strand blocks and GroomDeferredFeature reads them.
-                for (int i = 0; i < r.sharedMaterials.Length; i++) { r.GetPropertyBlock(block, i); set(block); r.SetPropertyBlock(block, i); }
+                r.GetSharedMaterials(sharedScratch);   // sharedMaterials would allocate an array per loop test
+                for (int i = 0, count = sharedScratch.Count; i < count; i++) { r.GetPropertyBlock(block, i); set(block); r.SetPropertyBlock(block, i); }
             }
         }
 
