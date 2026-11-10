@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Package renamed from `com.unity.metahuman` to `metahuman-urp`: this is not a Unity package. Projects that installed it under the old name must remove that entry from `Packages/manifest.json` and add it again from the git URL. Shader includes now use `Packages/metahuman-urp/...`.
+
 ## 0.1.0
 
 First release with the sample project: `SampleProject` (Taro talking shot, Git LFS) is published next to the package.

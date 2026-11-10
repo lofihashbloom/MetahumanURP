@@ -8,7 +8,7 @@
 // StrandComputeShade (full-screen shade + composite), and the full-screen vertex StrandDeferredVertex.
 #ifndef METAHUMAN_GROOM_DEFERRED_PASSES_INCLUDED
 #define METAHUMAN_GROOM_DEFERRED_PASSES_INCLUDED
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSegments.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomSegments.hlsl"
 
 // Set by GroomDeferredFeature for the cameras it draws: the forward-path groom passes (drawn by
 // GroomTransparencyFeature) cull themselves, so the deferred materials are not drawn twice.

@@ -2,7 +2,7 @@
 // the hardware draw of long segments: the per-frame camera state and StrandVertex's compensated-rectangle placement.
 #ifndef METAHUMAN_GROOM_RIBBON_INCLUDED
 #define METAHUMAN_GROOM_RIBBON_INCLUDED
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSegments.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomSegments.hlsl"
 StructuredBuffer<MHGroomPoint> _Points;
 StructuredBuffer<uint> _Segments;
 StructuredBuffer<MHGroomMesh> _Meshes;

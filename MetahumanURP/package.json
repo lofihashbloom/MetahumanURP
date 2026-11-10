@@ -1,5 +1,5 @@
 {
-  "name": "com.unity.metahuman",
+  "name": "metahuman-urp",
   "version": "0.1.0",
   "displayName": "MetaHuman for Unity (Prototype)",
   "description": "Experimental MetaHuman interchange, source-data skin and eye adapters, normalized diffusion, native texture transport, independent desktop fiber scattering, hair-to-skin receiver shadows and URP groom visibility diagnostics. Independent integration; not an official Unity or Epic product.",

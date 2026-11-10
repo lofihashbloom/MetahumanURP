@@ -6,7 +6,7 @@
 #pragma use_dxc
 #pragma require int64BufferAtomics
 
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRasterCommon.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomRasterCommon.hlsl"
 
 RWStructuredBuffer<uint64_t> _Nearest64;
 

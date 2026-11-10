@@ -15,7 +15,7 @@ Shader "Hidden/MetaHuman/GroomLongSegments"
         Cull Off
         HLSLINCLUDE
         #pragma target 4.5
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRibbon.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/GroomRibbon.hlsl"
         uint _PointBase;
         struct LongVaryings
         {

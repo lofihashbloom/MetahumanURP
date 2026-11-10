@@ -1,6 +1,6 @@
 # MetaHuman for Unity — URP prototype
 
-`com.unity.metahuman` targets **Unity 6000.6 / URP 17.6**, desktop Metal and desktop Direct3D as intended rendering platforms. The bundled facial native plugin currently supports **macOS arm64 only**; Windows/Intel native binaries and player builds are not validated. This is an independent integration, not an official Unity or Epic package.
+`metahuman-urp` targets **Unity 6000.6 / URP 17.6**, desktop Metal and desktop Direct3D as intended rendering platforms. The bundled facial native plugin currently supports **macOS arm64 only**; Windows/Intel native binaries and player builds are not validated. This is an independent integration, not an official Unity or Epic package.
 
 ## New in exp.17 — hair-to-skin receiver shadows
 

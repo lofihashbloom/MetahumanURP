@@ -11,7 +11,7 @@
 #pragma kernel RasterNearestId
 #pragma kernel RasterOpticalAndDepth
 
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSegments.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomSegments.hlsl"
 
 
 // ---------------------------------------------------------------- build
@@ -73,7 +73,7 @@ void BuildSegments(uint3 id : SV_DispatchThreadID)
     InterlockedAdd(_MeshLengths[_MeshIndex], (uint)min(len * 1e4 + .5, 65535.0));
 }
 
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRasterCommon.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomRasterCommon.hlsl"
 
 uint _RaisedWords;
 

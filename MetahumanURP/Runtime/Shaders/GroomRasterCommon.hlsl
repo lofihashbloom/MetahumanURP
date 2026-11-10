@@ -1,7 +1,7 @@
 // Shared per-frame state and ribbon rasterization of the deferred groom's compute kernels (32-bit and 64-bit variants).
 #ifndef METAHUMAN_GROOM_RASTER_COMMON_INCLUDED
 #define METAHUMAN_GROOM_RASTER_COMMON_INCLUDED
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRibbon.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomRibbon.hlsl"
 // ---------------------------------------------------------------- per frame
 RWStructuredBuffer<uint> _OpticalDepth;   // per pixel, fixed point
 RWStructuredBuffer<uint> _NearestDepth;   // per pixel, asuint(device depth), 0 = none

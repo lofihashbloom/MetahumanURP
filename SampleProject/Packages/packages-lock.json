@@ -62,7 +62,7 @@
       "source": "builtin",
       "dependencies": {}
     },
-    "com.unity.metahuman": {
+    "metahuman-urp": {
       "version": "file:../../MetahumanURP",
       "depth": 0,
       "source": "local",

@@ -4,7 +4,7 @@
 // device depth (asuint, reversed Z: larger is nearer) and the nearest segment (24 bits) with its position along it (8 bits).
 #ifndef METAHUMAN_GROOM_SEGMENTS_INCLUDED
 #define METAHUMAN_GROOM_SEGMENTS_INCLUDED
-#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSway.hlsl"
+#include "Packages/metahuman-urp/Runtime/Shaders/GroomSway.hlsl"
 
 struct MHGroomPoint
 {

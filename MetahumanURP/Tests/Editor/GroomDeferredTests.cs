@@ -10,7 +10,7 @@ namespace MetaHuman.Tests
 {
     public sealed class GroomDeferredTests
     {
-        const string Package = "Packages/com.unity.metahuman/Runtime/";
+        const string Package = "Packages/metahuman-urp/Runtime/";
 
         [Test] public void ComputeRasterKernelsCompileWithoutErrors()
         {

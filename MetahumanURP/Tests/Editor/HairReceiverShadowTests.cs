@@ -130,7 +130,7 @@ namespace MetaHuman.Tests
             // The skin's whole lighting is one loop (MHSkinLighting): the main light and both additional-light loops
             // (Forward+ directional and clustered) are fetched there only, each wrapped by the receiver, and every
             // term (surface response, scatter, fuzz, teeth translucency) takes that light.
-            string Source(string file) => System.IO.File.ReadAllText("Packages/com.unity.metahuman/Runtime/Shaders/" + file);
+            string Source(string file) => System.IO.File.ReadAllText("Packages/metahuman-urp/Runtime/Shaders/" + file);
             int Count(string text, string token) => text.Split(token).Length - 1;
             string skin = Source("MetaHumanSkinLighting.hlsl"), surface = Source("MetaHumanSurface.hlsl");
             Assert.AreEqual(1, Count(skin, "Light key = MHReceiverMain(GetMainLight("));

@@ -94,11 +94,11 @@ Shader "MetaHuman/Sample/HairStrands"
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/HairFiberLookup.hlsl"
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/HairDirectProfile.hlsl"
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/HairLocalReferenceProfile.hlsl"
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/HairLocalEnvelopeProfile.hlsl"
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSelfShadow.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/HairFiberLookup.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/HairDirectProfile.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/HairLocalReferenceProfile.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/HairLocalEnvelopeProfile.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/GroomSelfShadow.hlsl"
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/MotionVectorsCommon.hlsl"
         CBUFFER_START(UnityPerMaterial)
         half4 _BaseColor;
@@ -745,7 +745,7 @@ Shader "MetaHuman/Sample/HairStrands"
             depth = input.strand.positionCS.z;
             return float4(CalcNdcMotionVectorFromCsPositions(input.currentCS,input.previousCS),0,0);
         }
-        #include "Packages/com.unity.metahuman/Runtime/Shaders/GroomDeferredPasses.hlsl"
+        #include "Packages/metahuman-urp/Runtime/Shaders/GroomDeferredPasses.hlsl"
         ENDHLSL
         Pass
         {
