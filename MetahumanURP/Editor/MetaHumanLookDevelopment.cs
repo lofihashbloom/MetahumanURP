@@ -77,16 +77,33 @@ namespace MetaHuman.Editor
             var volume = new GameObject("Portrait ACES Volume").AddComponent<Volume>();
             volume.isGlobal = true;
             volume.sharedProfile = profile;
-            // Save explicit, inspectable baseline settings in this newly created host only.
-            urp.supportsHDR = true;
-            urp.msaaSampleCount = 4;
-            urp.shadowDistance = 20;
-            QualitySettings.skinWeights = SkinWeights.Unlimited;
-            EditorUtility.SetDirty(urp);
+            // The portrait look wants HDR, 4x MSAA, a 20 m shadow distance and unlimited skin weights. These live on the
+            // active URP asset and in the project's quality settings, so they affect every scene: change them only when
+            // the user agrees (never silently, never in batch mode), and list exactly what changes.
+            var changes = new System.Collections.Generic.List<string>();
+            if (!urp.supportsHDR) changes.Add("HDR on (URP asset " + urp.name + ")");
+            if (urp.msaaSampleCount != 4) changes.Add("MSAA " + urp.msaaSampleCount + "x -> 4x (URP asset " + urp.name + ")");
+            if (!Mathf.Approximately(urp.shadowDistance, 20)) changes.Add("shadow distance " + urp.shadowDistance + " m -> 20 m (URP asset " + urp.name + ")");
+            if (QualitySettings.skinWeights != SkinWeights.Unlimited) changes.Add("skin weights " + QualitySettings.skinWeights + " -> Unlimited (quality level " + QualitySettings.names[QualitySettings.GetQualityLevel()] + ")");
+            if (changes.Count > 0 && !Application.isBatchMode && EditorUtility.DisplayDialog("MetaHuman look development",
+                    "The portrait look needs these project-wide settings. They apply to every scene that uses this pipeline asset and quality level:\n\n- " + string.Join("\n- ", changes) +
+                    "\n\nChange them? Choose Keep to create the scene with the current settings.", "Change", "Keep"))
+            {
+                Undo.RecordObject(urp, "MetaHuman look development settings");
+                urp.supportsHDR = true;
+                urp.msaaSampleCount = 4;
+                urp.shadowDistance = 20;
+                QualitySettings.skinWeights = SkinWeights.Unlimited;
+                EditorUtility.SetDirty(urp);
+            }
+            else if (changes.Count > 0) Debug.LogWarning("MetaHuman look development: project settings left unchanged; the portrait look expects " + string.Join(", ", changes) + ".");
             EditorUtility.SetDirty(profile);
             AssetDatabase.SaveAssets();
             EditorSceneManager.SaveScene(scene, Output + "/Portrait.unity");
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(Output + "/Portrait.unity", true) };
+            // Add the scene to the build list (once), keeping the scenes already there.
+            string portraitScene = Output + "/Portrait.unity";
+            if (!EditorBuildSettings.scenes.Any(sc => sc.path == portraitScene))
+                EditorBuildSettings.scenes = EditorBuildSettings.scenes.Concat(new[] { new EditorBuildSettingsScene(portraitScene, true) }).ToArray();
             Selection.activeGameObject = instance;
         }
 

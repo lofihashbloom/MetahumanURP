@@ -95,10 +95,12 @@ namespace MetaHuman.Rendering
         static readonly int MaterialIdId = Shader.PropertyToID("_MHGroomDeferredId");
         static readonly int ActiveId = Shader.PropertyToID("_MHGroomDeferredActive");
 
+        static readonly SharedCameraHook cameraHook = new SharedCameraHook(ResetActive);
+        [System.NonSerialized] bool cameraHookHeld;
+
         public override void Create()
         {
-            RenderPipelineManager.beginCameraRendering -= ResetActive;
-            RenderPipelineManager.beginCameraRendering += ResetActive;
+            cameraHook.Acquire(ref cameraHookHeld);
             pass?.Dispose();
             pass = new GroomPass(this, settings);
             // Before GroomTransparencyFeature's pass: its forward-path groom passes cull deferred materials.
@@ -107,7 +109,7 @@ namespace MetaHuman.Rendering
 
         protected override void Dispose(bool disposing)
         {
-            RenderPipelineManager.beginCameraRendering -= ResetActive;
+            cameraHook.Release(ref cameraHookHeld);
             Shader.SetGlobalFloat(ActiveId, 0);
             pass?.Dispose();
             geometry.Release();
@@ -142,6 +144,19 @@ namespace MetaHuman.Rendering
             if (lastRecordedSkippedMultisample) return;
             Refresh();
             if (materials.Count == 0) return;
+            // A deferred-capable groom material on a renderer this feature cannot draw (a SkinnedMeshRenderer, for strands
+            // that deform with the skin) would be drawn by neither path: the shared-layer flag culls its forward passes and
+            // exclusive layers make the transparency feature skip it. Leave every groom to the forward path for this camera.
+            if (unsupportedRenderer)
+            {
+                if (warnedRenderer != unsupportedRenderer)
+                {
+                    warnedRenderer = unsupportedRenderer;
+                    Debug.LogWarning($"GroomDeferredFeature: '{unsupportedRenderer.name}' ({unsupportedRenderer.GetType().Name}) uses a deferred groom material on the feature's layers, but only MeshRenderers can be drawn deferred. All grooms use the forward path until it is moved to another layer or given another material.", unsupportedRenderer);
+                }
+                lastRecordedRasterMode = RasterMode.Hardware;
+                return;
+            }
             pass.compute = settings.rasterMode == RasterMode.Compute && PrepareCompute(camera.camera, camera.cameraTargetDescriptor.height);
             if (!pass.compute) AssignMaterialIds();
             lastRecordedRasterMode = pass.compute ? RasterMode.Compute : RasterMode.Hardware;
@@ -153,6 +168,8 @@ namespace MetaHuman.Rendering
             else renderer.EnqueuePass(flagPass);
             renderer.EnqueuePass(pass);
         }
+
+        Renderer unsupportedRenderer, warnedRenderer;
 
         /// <summary>Forces a rescan of the scene's groom renderers and materials (and a segment rebuild) on the next frame.</summary>
         public void InvalidateMaterials() { scanned = false; geometry.Invalidate(); }
@@ -167,7 +184,7 @@ namespace MetaHuman.Rendering
                 && renderers.TrueForAll(Drawn) && scannedVolumes == MetaHuman.Groom.GroomShadowVolume.Active.Count) return;
             scanned = true; lastScanFrame = frame;
             materials.Clear(); renderers.Clear(); groups.Clear(); rendererGroups.Clear();
-            multiMaterialRenderer = false;
+            multiMaterialRenderer = false; unsupportedRenderer = null;
             foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
             {
                 if (!Drawn(r) || ((1 << r.gameObject.layer) & settings.layers.value) == 0) continue;
@@ -178,6 +195,7 @@ namespace MetaHuman.Rendering
                     groom = true;
                     if (!materials.Contains(m)) materials.Add(m);
                 }
+                if (groom && !(r is MeshRenderer) && !unsupportedRenderer) unsupportedRenderer = r;
                 if (!groom || !(r is MeshRenderer mr)) continue;
                 renderers.Add(mr);
                 if (r.sharedMaterials.Length != 1) multiMaterialRenderer = true;
@@ -219,6 +237,9 @@ namespace MetaHuman.Rendering
         {
             var shader = settings.computeShader ? settings.computeShader : Resources.Load<ComputeShader>("MetaHumanGroomComputeRaster");
             if (!shader) { geometry.unsupported = "compute shader missing"; return false; }
+            // The compute rasterizer compares depths as reversed Z (nearest = largest) and uses atomics: fall back to the
+            // hardware mode where the platform has a conventional depth buffer (OpenGL) or no compute shaders.
+            if (!SystemInfo.supportsComputeShaders || !SystemInfo.usesReversedZBuffer) { geometry.unsupported = "compute raster needs compute shaders and a reversed depth buffer"; return false; }
             if (multiMaterialRenderer) { geometry.unsupported = "compute raster needs one groom material per renderer"; return false; }
             foreach (var material in materials)
                 if (!material.HasFloat(RasterProfileId) || material.GetFloat(RasterProfileId) < .5f || material.GetFloat(CoverageModeId) < .5f

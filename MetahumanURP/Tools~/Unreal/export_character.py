@@ -42,7 +42,7 @@ def export(obj, folder, suffix, exporter, options=None):
     name = obj.get_name() + '_' + hashlib.sha1(source.encode()).hexdigest()[:8]
     target = OUT / folder / (name + suffix)
     target.parent.mkdir(parents=True, exist_ok=True)
-    report['pendingExport'] = dict(source=source, file=str(target.relative_to(OUT)),
+    report['pendingExport'] = dict(source=source, file=target.relative_to(OUT).as_posix(),
                                   exporter=exporter.get_class().get_name())
     save()
     task = unreal.AssetExportTask()
@@ -57,7 +57,7 @@ def export(obj, folder, suffix, exporter, options=None):
     if not unreal.Exporter.run_asset_export_task(task) or not target.exists():
         raise RuntimeError(f'Export failed: {source}: {list(task.errors)}')
     report.pop('pendingExport', None)
-    return dict(source=source, file=str(target.relative_to(OUT)),
+    return dict(source=source, file=target.relative_to(OUT).as_posix(),
                 sha256=hashlib.sha256(target.read_bytes()).hexdigest(), bytes=target.stat().st_size)
 
 def texture_exporter(texture):
