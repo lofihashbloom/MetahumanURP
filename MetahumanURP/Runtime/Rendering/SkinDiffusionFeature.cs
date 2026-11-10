@@ -38,10 +38,12 @@ namespace MetaHuman.Rendering
         SingleDrawFlagPass enableSingleDraw;
         static readonly int SingleDrawId = Shader.PropertyToID("_MHSkinSingleDraw");
 
+        static readonly SharedCameraHook cameraHook = new SharedCameraHook(ResetSingleDraw);
+        [System.NonSerialized] bool cameraHookHeld;
+
         public override void Create()
         {
-            RenderPipelineManager.beginCameraRendering -= ResetSingleDraw;
-            RenderPipelineManager.beginCameraRendering += ResetSingleDraw;
+            cameraHook.Acquire(ref cameraHookHeld);
             CoreUtils.Destroy(material);
             var shader = settings.shader ? settings.shader : Shader.Find("Hidden/MetaHuman/SkinDiffusion");
             material = shader ? CoreUtils.CreateEngineMaterial(shader) : null;
@@ -70,7 +72,7 @@ namespace MetaHuman.Rendering
 
         protected override void Dispose(bool disposing)
         {
-            RenderPipelineManager.beginCameraRendering -= ResetSingleDraw;
+            cameraHook.Release(ref cameraHookHeld);
             Shader.SetGlobalFloat(SingleDrawId, 0);
             CoreUtils.Destroy(material);
         }

@@ -28,6 +28,11 @@ namespace MetaHuman.Tests
             Assert.Throws<InvalidDataException>(() => MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "../elsewhere.fbx"));
             Assert.Throws<InvalidDataException>(() => MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "/tmp/test.fbx"));
             Assert.That(MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "Meshes/face.fbx"), Is.EqualTo("Assets/Test/Meshes/face.fbx"));
+            // Backslashes are separators in manifests: "..\\.." must not pass as one file name on macOS and Linux.
+            Assert.Throws<InvalidDataException>(() => MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "..\\..\\ProjectSettings\\ProjectSettings.asset"));
+            Assert.Throws<InvalidDataException>(() => MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "Meshes/../../elsewhere.fbx"));
+            Assert.Throws<InvalidDataException>(() => MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "C:/tmp/test.fbx"));
+            Assert.That(MetaHumanImporter.ResolveAsset("Assets/Test/Kellan.mhmanifest.json", "Meshes\\face.fbx"), Is.EqualTo("Assets/Test/Meshes/face.fbx"));
         }
 
         [Test]

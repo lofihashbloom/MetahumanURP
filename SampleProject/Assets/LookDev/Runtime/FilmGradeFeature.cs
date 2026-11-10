@@ -18,7 +18,8 @@ public sealed class FilmGradeFeature : ScriptableRendererFeature
     GradePass pass;
     Material present;
 
-    public override void Create() => pass = new GradePass();
+    // Create runs again on every inspector edit: release the previous pass's three history targets before replacing it.
+    public override void Create() { pass?.Release(); pass = new GradePass(); }
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
@@ -33,7 +34,7 @@ public sealed class FilmGradeFeature : ScriptableRendererFeature
         renderer.EnqueuePass(pass);
     }
 
-    protected override void Dispose(bool disposing) { pass?.Release(); CoreUtils.Destroy(present); }
+    protected override void Dispose(bool disposing) { pass?.Release(); pass = null; FilmGrade.Release(); CoreUtils.Destroy(present); present = null; }
 
     sealed class GradePass : ScriptableRenderPass
     {

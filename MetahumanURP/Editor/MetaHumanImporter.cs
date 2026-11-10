@@ -35,8 +35,15 @@ namespace MetaHuman.Editor
 
         public static string ResolveAsset(string manifestPath, string relativePath)
         {
-            if (string.IsNullOrEmpty(relativePath) || Path.IsPathRooted(relativePath))
+            if (string.IsNullOrEmpty(relativePath))
                 throw new InvalidDataException("Bundle paths must be relative.");
+            // Manifests use '/' separators. A backslash is an ordinary file-name character on macOS and Linux, so
+            // "..\..\X" would pass the containment check below as one segment and only become "../../X" afterwards:
+            // normalise first, then refuse rooted paths and any ".." segment outright.
+            relativePath = relativePath.Replace('\\', '/');
+            if (Path.IsPathRooted(relativePath) || relativePath.StartsWith("/", StringComparison.Ordinal) || relativePath.Contains(":")
+                || Array.IndexOf(relativePath.Split('/'), "..") >= 0)
+                throw new InvalidDataException("Bundle paths must be relative and stay inside the bundle: " + relativePath);
             string project = Path.GetFullPath(".") + Path.DirectorySeparatorChar;
             string root = Path.GetFullPath(Path.GetDirectoryName(manifestPath) ?? "");
             string file = Path.GetFullPath(Path.Combine(root, relativePath));
@@ -50,7 +57,8 @@ namespace MetaHuman.Editor
         {
             string path = ResolveAsset(manifest, file);
             if (!File.Exists(path)) throw new FileNotFoundException("Bundle file missing", path);
-            if (!string.IsNullOrEmpty(hash))
+            // Every exported file carries its SHA-256; a manifest entry without one is refused rather than trusted.
+            if (string.IsNullOrEmpty(hash)) throw new InvalidDataException("Bundle file has no sha256 in the manifest: " + file);
             {
                 using (var sha = SHA256.Create())
                 using (var stream = File.OpenRead(path))
