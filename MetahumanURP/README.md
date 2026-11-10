@@ -2,13 +2,13 @@
 
 `metahuman-urp` targets **Unity 6000.6 / URP 17.6**, desktop Metal and desktop Direct3D as intended rendering platforms. The bundled facial native plugin currently supports **macOS arm64 only**; Windows/Intel native binaries and player builds are not validated. This is an independent integration, not an official Unity or Epic package.
 
-## New in exp.17 — hair-to-skin receiver shadows
+## Hair-to-skin receiver shadows
 
 Hair now darkens the skin it covers. Before this change, skin under Ada's coily hair was lit as if bare, so the roots read as brown skin, unlike Unreal. `HairReceiverShadowFeature` + `HairReceiverShadowVolume` bind up to four static light-space optical-depth fields built from the source groom by `Tools~/Hair/build_receiver_shadow_fields.py`; skin materials opt in with the local `MH_HAIR_RECEIVER_SHADOW` keyword and attenuate each mapped direct light once. In the controlled Ada comparison, the hairline error against Unreal drops by about 12–16%. Fields are rest pose (no head motion, deformation or moving lights) and model fibers as gray occluders. Setup, requirements and validation: HairReceiverShadows notes (not part of this repository).
 
 Face and body animation: `DnaRigDriver` applies the rig's corrective blend shapes and drives wrinkle maps (`DnaAnimatedMapBinding`, skin keyword `MH_ANIMATED_MAPS`). With `layerBodyJoints`, neck and head deltas layer on the body animation instead of overriding it. `GroomSurfaceBinding` makes eyebrow strands follow the deforming face skin. Scalp hair can be parented rigidly to the head bone; receiver shadow fields are rest-pose fields, so on a moving head they keep the light direction fixed in head space. None of this is Unreal groom binding, simulation or full RigLogic parity.
 
-## Current state — exp.16 hair work
+## Hair rendering
 
 The new optional `Roughness037Envelope` local-scattering profile uses an independently fitted angular response, validated against fresh unit renders before the long-hair comparison. It reduces long-hair Local RGB error about **69–71%** and Full error **6–7%** versus exp.15, with unchanged optical coverage. Full mean brightness remains **3.5–4.4%** above the matched raw reference. The profile is restricted to constant authored roughness0.37; the old profile1 and default-off behavior remain available. Input-format adaptations that worsened broader checks were rejected.
 
@@ -54,7 +54,7 @@ The distributable also includes `Tools~/Unreal/export_character.py`. Run it thro
 - A saved portrait stage with three-point lighting and an ACES Volume; validation and PNG capture helpers.
 
 
-## Historical: native DNA facial animation (v0.1.0-exp.2)
+## Native DNA facial animation
 
 `DnaRigDefinition` holds a standalone binary DNA `TextAsset` (use a `.bytes` extension). `DnaRigDriver` owns an independent native instance and exposes `SetRawControl(name, value)`, `ClearControls()` and `EvaluateNow()`. In Play mode it applies outputs in `LateUpdate`; optional Editor preview can be enabled explicitly. Raw names are exact DNA names such as `CTRL_expressions.jawOpen`, not automatically mapped ARKit names or GUI faceboard controls.
 
@@ -76,7 +76,7 @@ Fetch the pinned OpenRigLogic 5.8 commit separately, then run `Native~/build_nat
 
 The bundled binary is enabled only for the macOS arm64 Editor and player. The C ABI and CMake source are portable, but source portability is not a Windows/Intel validation claim. See `Third Party Notices.txt` for the OpenRigLogic MIT license. No character DNA or meshes are included in the package archive.
 
-## Historical: bound hair cards (v0.1.0-exp.3)
+## Bound hair cards
 
 The importer now builds face-surface bindings for available static hair-card meshes. It spatially fits vertices to the largest face section with a 0.7 mm minimum clearance, records triangle/barycentric attachments and stores readable fitted meshes under the generated character's `Bindings` folder. The original FBX renderers are disabled; generated bound renderers preserve materials and active/inactive LOD alternatives. Vertices farther than 5 cm from the face reject the automatic fit rather than silently snapping a different hairstyle.
 
@@ -88,7 +88,7 @@ The hair shader stabilizes fine-strand alpha-to-coverage with screen derivatives
 
 The desktop look-development baseline now uses `SkinWeights.Unlimited`; the first baseline stored 12 influences but rendered with a four-bone limit. The mobile quality tier is unchanged. Bindings target one exact face mesh/LOD and must be regenerated when its topology changes. Editor previews use transient mesh clones and restore generated rest assets before scene or Prefab Stage saves.
 
-## Historical: skin diffusion and eye shading (v0.1.0-exp.4)
+## Skin diffusion and eye shading
 
 Run **Tools > MetaHuman > Enable Skin Diffusion On Active Renderer** after importing. This adds one `SkinDiffusionFeature` to the active Universal Renderer asset and serializes its fullscreen shader reference. The host's portrait renderer already includes it. It uses URP 17.6 Render Graph and runs before transparents, so wetline and eye-occlusion geometry composite afterwards. Overlay cameras, reflection/preview cameras and stereo cameras are skipped. XR and dynamic-resolution behavior are not validated.
 
@@ -104,7 +104,7 @@ Eye shading adds a limbal transition, radial pupil remapping, source iris color/
 
 GPU integration tests render a patterned skin surface behind a blue opaque occluder, check visible skin diffusion while preserving the foreground, preserve a specular-only sphere highlight and a uniform surface's 4x-MSAA silhouette, verify that pupil/refraction controls change the iris, and ensure eye occlusion attenuates without adding light. The host captures front/three-quarter on/off comparisons plus eye closeups. These checks establish operation and isolation, not visual parity with Unreal.
 
-## Historical: matched Unreal reference (v0.1.0-exp.5)
+## Matched Unreal reference
 
 The host now captures native Unreal 5.8.4 and Unity scene-linear EXRs from the same neutral geometry, camera and direct lights, including front and 25-degree views at 1200 square pixels. Grooms, ambient lighting and shadows are omitted in both captures to isolate skin and eyes. An 18% emissive card normalizes exposure; a separate diffuse card checks light-unit conversion. A shared fitted ACES/sRGB transform is applied only for viewing. The largest residual channel difference on the diffuse calibration card is about 2%; image errors are measured before the display transform.
 
@@ -116,7 +116,7 @@ Reproducible host scripts, camera/light receipts, calibration values, fixed imag
 
 Unreal source and original asset parameters were studied as behavioral references. The Unity shader and filtering implementation are independent; Unreal renderer source and material graphs are not shipped in this package. Epic character content and diagnostic captures remain outside the package archive.
 
-## Historical: first original-groom hair pass (v0.1.0-exp.6)
+## First original-groom hair pass
 
 The package now has a strict `MHGRM001` curve reader, deterministic ribbon builder and independent `MetaHuman/URP/GroomStrands` shader. An original read-only Unreal Editor bridge in `Tools~/Unreal/GroomExportBridge` exports `UGroomAsset` source positions, widths, groups, root UVs and guide flags through public APIs. It exports source data, not Unreal renderer geometry or shader code. The helper was compiled against Unreal 5.8.4 for macOS; its compiled Unreal plugin is not in this UPM archive.
 
@@ -128,7 +128,7 @@ Ribbons expand towards the camera in the vertex shader. Longitudinal two-lobe cy
 
 The host's `GroomPreview.unity` and `Tools/QA/BuildGroomPreview.cs` exercise the public reader/builder API. This first API pass is separate from automatic `.mhmanifest.json` import; imported characters do not acquire head hair automatically. See the bridge README for build/export instructions. Character curves and generated meshes remain outside the code package. GPU regression tests check that layered subpixel strands increase coverage and remain occluded by an opaque foreground; format tests reject corrupt ranges, truncation and nonfinite points.
 
-## Historical: matched eye diagnostics (v0.1.0-exp.8)
+## Matched eye diagnostics
 
 Kellan's actual simplified eye material uses Unreal Default Lit, not its Eye shading model. The new native closeups isolate cartilage, tear film, eye occlusion, base color and normals under the matched direct-light rig. The importer now preserves fully discarded constant opacity masks, respects hair-card opacity (including zero-opacity lower-LOD lashes), and imports the tear film's opacity .01, roughness .2, metallic 1 and specular .008. Metallic film opacity is applied once; its BRDF evaluates Fresnel independently.
 
@@ -136,7 +136,7 @@ The independent iris model aligns the texture's existing black aperture with the
 
 `Validation/EyeMatched` in the host contains the matched EXRs, isolated layers, material diagnostics, three-column comparisons and fixed-region measurements. Specular highlights, directional lid occlusion, scleral response and off-axis refraction still differ. At exp.8 this was a Kellan-only capture set. Ada and Taro are now imported and captured as described above. No three-face parity claim is made. The exp.8 Metal validation included zero-opacity color/depth isolation; consult current validation receipts for the latest test results. In the diagnostic iris band, linear albedo error falls 82–85% and pupil diameter changes from 31–32 to 45 pixels (native 45–46). At that stage full lit eye-region RMSE improved only about 0.3% because the highlight mismatch dominated. These historical front-view results are Kellan-specific; use the exp.9 report above for corrected off-axis comparisons.
 
-## Historical: continuous hair and source-profile skin (v0.1.0-exp.7)
+## Continuous hair and source-profile skin
 
 Run **Tools > MetaHuman > Enable Continuous Groom Transparency On Active Renderer**. This installs `GroomTransparencyFeature` after skin diffusion and selects continuous mode on imported groom materials. `_CoverageMode = 0` retains the stochastic fallback; `_CoverageMode = 1` requires the renderer feature. Reflection/preview/stereo and overlay cameras are skipped, so use fallback mode where this feature is unsupported. The first implementation targets desktop base cameras with URP 17.6 Render Graph.
 
