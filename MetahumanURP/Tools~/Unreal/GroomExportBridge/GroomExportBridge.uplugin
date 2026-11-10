@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "MetaHuman Groom Data Export Bridge",
+  "Description": "Original read-only interchange helper using public Groom asset APIs. Contains no rendering implementation.",
+  "Category": "Editor",
+  "CanContainContent": false,
+  "EnabledByDefault": true,
+  "Modules": [{ "Name": "GroomExportBridge", "Type": "Editor", "LoadingPhase": "PostEngineInit" }],
+  "Plugins": [{ "Name": "HairStrands", "Enabled": true }]
+}

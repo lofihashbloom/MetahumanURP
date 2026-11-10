@@ -1,0 +1,6 @@
+{
+  "name": "MetaHuman.Runtime",
+  "rootNamespace": "MetaHuman",
+  "references": ["Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime", "Unity.Burst", "Unity.Collections", "Unity.Mathematics"],
+  "autoReferenced": true
+}

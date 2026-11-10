@@ -1,0 +1,13 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "MetaHuman Native Texture Export Bridge",
+  "Description": "Independent read-only interchange of public texture platform mip data. No renderer or codec implementation.",
+  "Category": "Editor",
+  "CanContainContent": false,
+  "EnabledByDefault": true,
+  "Modules": [
+    { "Name": "TextureExportBridge", "Type": "Editor", "LoadingPhase": "PostEngineInit" }
+  ]
+}

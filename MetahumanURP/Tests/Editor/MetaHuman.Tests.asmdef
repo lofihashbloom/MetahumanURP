@@ -1,0 +1,6 @@
+{
+  "name": "MetaHuman.Tests",
+  "references": ["MetaHuman.Runtime", "MetaHuman.Editor", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

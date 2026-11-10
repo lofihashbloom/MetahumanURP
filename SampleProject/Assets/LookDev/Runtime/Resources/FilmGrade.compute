@@ -1,0 +1,170 @@
+// Film grade of the teaser look, in Unity (FilmGrade.cs). A port of Tools/QA/v34/Teaser/beauty.py grade() and the
+// temporal filter of compose_beauty_video.py, same order of operations, on the centre square of the frame:
+// Prepare  [1/4,1/2,1/4] temporal filter of three scene-linear frames, exposure x white balance x temperature gains,
+//          and the energy above the glow threshold;
+// BoxV/H   glow: three box blurs per axis (sliding sums, edge clamped), a gaussian of sigma ~ the half-width;
+// StreakSource/Streak  anamorphic streak: luminance above the threshold, [1/4,1/2,1/4] across rows (wrapping, as the
+//          reference), then along each row a long and a short exponential, truncated at +-_StreakRadius and zero padded,
+//          evaluated exactly with two recursive sums per direction (Streak: toward +x, StreakBack: toward -x plus the
+//          first; two kernels and textures, as a read of a texel the same thread has just written returned stale data
+//          on Metal);
+// Final    lateral chromatic aberration (red and blue resampled about the centre), saturation, contrast about mid grey,
+//          ACES (Hill fit), vignette, sRGB encoding, monochrome grain, 8-bit rounding.
+// Row 0 of every texture is the top of the image.
+#pragma kernel Prepare
+#pragma kernel BoxV
+#pragma kernel BoxH
+#pragma kernel StreakSource
+#pragma kernel Streak
+#pragma kernel StreakBack
+#pragma kernel Final
+
+static const float3 LUM = float3(.2126, .7152, .0722);
+
+Texture2D<float4> _A, _B, _C, _Src, _LinR, _GlowR;
+Texture2D<float> _S0R, _S1R, _S2R;
+RWTexture2D<float4> _Lin, _Bright, _Dst, _Out;
+RWTexture2D<float> _S0, _S1, _S2;
+int _Size, _OffsetX, _OffsetY, _K, _StreakRadius, _Frame;
+float4 _Weights, _Gain, _StreakTint, _StreakA, _StreakW;   // _StreakA: a1, a1^(r+1), a2, a2^(r+1); _StreakW: w1, w2
+float _GlowThreshold, _GlowGain, _StreakThreshold, _StreakGain, _CA, _Sat, _Contrast, _Vignette, _Grain;
+
+[numthreads(8, 8, 1)]
+void Prepare(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size || (int)id.y >= _Size) return;
+    int2 p = int2(id.xy) + int2(_OffsetX, _OffsetY);
+    float3 v = _Weights.x * _A[p].rgb + _Weights.y * _B[p].rgb + _Weights.z * _C[p].rgb;
+    v = max(v, 0) * _Gain.rgb;
+    float lum = dot(v, LUM);
+    _Lin[id.xy] = float4(v, 1);
+    _Bright[id.xy] = float4(v * (max(lum - _GlowThreshold, 0) / max(lum, 1e-6)), 1);
+}
+
+[numthreads(64, 1, 1)]
+void BoxV(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size) return;
+    int n = _Size, x = id.x;
+    float inv = 1.0 / (2 * _K + 1);
+    float3 sum = 0;
+    for (int j = -_K; j <= _K; j++) sum += _Src[int2(x, clamp(j, 0, n - 1))].rgb;
+    for (int i = 0; i < n; i++)
+    {
+        _Dst[int2(x, i)] = float4(sum * inv, 1);
+        sum += _Src[int2(x, min(i + _K + 1, n - 1))].rgb - _Src[int2(x, max(i - _K, 0))].rgb;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void BoxH(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size) return;
+    int n = _Size, y = id.x;
+    float inv = 1.0 / (2 * _K + 1);
+    float3 sum = 0;
+    for (int j = -_K; j <= _K; j++) sum += _Src[int2(clamp(j, 0, n - 1), y)].rgb;
+    for (int i = 0; i < n; i++)
+    {
+        _Dst[int2(i, y)] = float4(sum * inv, 1);
+        sum += _Src[int2(min(i + _K + 1, n - 1), y)].rgb - _Src[int2(max(i - _K, 0), y)].rgb;
+    }
+}
+
+float Above(int x, int y)
+{
+    y = y < 0 ? y + _Size : y >= _Size ? y - _Size : y;
+    return max(dot(_LinR[int2(x, y)].rgb + _GlowGain * _GlowR[int2(x, y)].rgb, LUM) - _StreakThreshold, 0);
+}
+
+[numthreads(8, 8, 1)]
+void StreakSource(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size || (int)id.y >= _Size) return;
+    int x = id.x, y = id.y;
+    _S0[id.xy] = .25 * Above(x, y - 1) + .5 * Above(x, y) + .25 * Above(x, y + 1);
+}
+
+[numthreads(64, 1, 1)]
+void Streak(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size) return;
+    int n = _Size, y = id.x, r = _StreakRadius, x;
+    float c1 = 0, c2 = 0;
+    for (x = 0; x < n; x++)
+    {
+        float b = _S0R[int2(x, y)], gone = x - r - 1 >= 0 ? _S0R[int2(x - r - 1, y)] : 0;
+        c1 = _StreakA.x * c1 + b - _StreakA.y * gone;
+        c2 = _StreakA.z * c2 + b - _StreakA.w * gone;
+        _S1[int2(x, y)] = _StreakW.x * c1 + _StreakW.y * c2;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void StreakBack(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size) return;
+    int n = _Size, y = id.x, r = _StreakRadius, x;
+    float c1 = 0, c2 = 0;
+    for (x = n - 1; x >= 0; x--)
+    {
+        float next = x + 1 < n ? _S0R[int2(x + 1, y)] : 0, gone = x + r + 1 < n ? _S0R[int2(x + r + 1, y)] : 0;
+        c1 = _StreakA.x * (c1 + next) - _StreakA.y * gone;
+        c2 = _StreakA.z * (c2 + next) - _StreakA.w * gone;
+        _S2[int2(x, y)] = _S1R[int2(x, y)] + _StreakW.x * c1 + _StreakW.y * c2;
+    }
+}
+
+float3 Lens(int2 p)
+{
+    return _LinR[p].rgb + _GlowGain * _GlowR[p].rgb + _StreakGain * _S2R[p] * _StreakTint.rgb;
+}
+
+float Resample(float2 at, int channel)
+{
+    at = clamp(at, 0, _Size - 1.001);
+    int2 p = int2(at);
+    float2 f = at - p;
+    return Lens(p)[channel] * (1 - f.x) * (1 - f.y) + Lens(p + int2(1, 0))[channel] * f.x * (1 - f.y)
+         + Lens(p + int2(0, 1))[channel] * (1 - f.x) * f.y + Lens(p + int2(1, 1))[channel] * f.x * f.y;
+}
+
+uint Hash(uint v)
+{
+    v = v * 747796405u + 2891336453u;
+    uint w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+[numthreads(8, 8, 1)]
+void Final(uint3 id : SV_DispatchThreadID)
+{
+    if ((int)id.x >= _Size || (int)id.y >= _Size) return;
+    float3 v = Lens(id.xy);
+    if (_CA > 0)
+    {
+        float centre = (_Size - 1) * .5;
+        float2 d = float2(id.xy) - centre;
+        v.r = Resample(centre + d * (1 / (1 + _CA)), 0);
+        v.b = Resample(centre + d * (1 / (1 - _CA)), 2);
+    }
+    float lum = dot(v, LUM);
+    v = max(lum + (v - lum) * _Sat, 0);
+    if (_Contrast != 1) v = .18 * pow(v / .18, _Contrast);
+    // ACES filmic (Hill fit).
+    v = float3(dot(float3(.59719, .35458, .04823), v), dot(float3(.07600, .90834, .01566), v), dot(float3(.02840, .13383, .83777), v));
+    v = (v * (v + .0245786) - .000090537) / (v * (.983729 * v + .4329510) + .238081);
+    v = saturate(float3(dot(float3(1.60475, -.53108, -.07367), v), dot(float3(-.10208, 1.10813, -.00605), v), dot(float3(-.00327, -.07276, 1.07602), v)));
+    float half_ = _Size * .5;
+    float radius = length((float2(id.xy) - half_) / half_);
+    float edge = max(radius - .55, 0);
+    v *= 1 - _Vignette * edge * edge;
+    v = v <= .0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - .055;
+    if (_Grain > 0)
+    {
+        uint seed = Hash(id.x + Hash(id.y + Hash((uint)_Frame)));
+        float u1 = ((Hash(seed) >> 8) + .5) * (1.0 / 16777216.0), u2 = (Hash(seed ^ 0x9E3779B9u) >> 8) * (1.0 / 16777216.0);
+        v += _Grain * sqrt(-2 * log(u1)) * cos(6.28318530718 * u2);
+    }
+    _Out[id.xy] = float4(floor(saturate(v) * 255 + .5) / 255, 1);
+}

@@ -1,0 +1,150 @@
+// Compute rasterizer for the deferred groom (GroomDeferredFeature, RasterMode.Compute).
+// Build kernels convert ribbon meshes (vertex pair per strand point, one quad per segment) into the shared point and
+// segment buffers once. Per frame, three passes over every segment rasterize its ribbon quad exactly as the
+// strand shader's vertex stage would place it (compensated-rectangle profile), with pixel-centre coverage tests:
+// optical depth (atomic add), nearest device depth (atomic max, reversed Z) and the nearest segment's id.
+#pragma kernel BuildPoints
+#pragma kernel BuildSegments
+#pragma kernel ClearTargets
+#pragma kernel RasterOpticalDepth
+#pragma kernel RasterNearestDepth
+#pragma kernel RasterNearestId
+#pragma kernel RasterOpticalAndDepth
+
+#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomSegments.hlsl"
+
+
+// ---------------------------------------------------------------- build
+ByteAddressBuffer _VertexData;
+ByteAddressBuffer _IndexData;
+RWStructuredBuffer<MHGroomPoint> _PointsOut;
+RWStructuredBuffer<uint> _SegmentsOut;
+RWStructuredBuffer<uint> _MeshLengths;   // per mesh: summed object-space segment length, 1e-4 units (fixed point)
+uint _VertexStride, _PositionOffset, _NormalOffset, _TangentOffset, _UV0Offset, _UV1Offset, _UV3Offset;
+uint _HasTangent, _HasUV3, _PointCount, _PointBase, _MeshIndex;
+uint _SegmentCount, _SegmentBase, _Index16;
+
+float3 LoadFloat3(uint vertex, uint offset) { return asfloat(_VertexData.Load3(vertex * _VertexStride + offset)); }
+float2 LoadFloat2(uint vertex, uint offset) { return asfloat(_VertexData.Load2(vertex * _VertexStride + offset)); }
+
+[numthreads(64, 1, 1)]
+void BuildPoints(uint3 id : SV_DispatchThreadID)
+{
+    uint p = id.x;
+    if (p >= _PointCount) return;
+    uint v = p * 2;
+    MHGroomPoint pt;
+    pt.centre = LoadFloat3(v, _PositionOffset);
+    float3 tangent = LoadFloat3(v, _NormalOffset);
+    float2 uv = LoadFloat2(v, _UV0Offset);
+    float2 widthRandom = LoadFloat2(v, _UV1Offset);
+    float coverage = _HasUV3 ? LoadFloat2(v, _UV3Offset).x : 1;
+    float3 frame = _HasTangent ? LoadFloat3(v, _TangentOffset) : 0;
+    bool frameValid = dot(frame, frame) > 1e-20;
+    pt.diameterU = MHGroomPackHalf2(float2(widthRandom.x, uv.y));
+    pt.randomCov = MHGroomPackHalf2(float2(widthRandom.y, coverage));
+    pt.tangentOct = MHGroomPackUnorm2(MHGroomOctEncode(dot(tangent, tangent) > 1e-20 ? tangent : float3(0, 1, 0)));
+    pt.frameOct = MHGroomPackUnorm2(MHGroomOctEncode(frameValid ? frame : float3(1, 0, 0)));
+    pt.meshFlags = (_MeshIndex & 0xFFFFFFu) | (frameValid ? (1u << 24) : 0);
+    _PointsOut[_PointBase + p] = pt;
+}
+
+uint LoadIndex(uint i)
+{
+    if (_Index16)
+    {
+        uint word = _IndexData.Load((i * 2) & ~3u);
+        return (i & 1u) ? word >> 16 : word & 0xFFFFu;
+    }
+    return _IndexData.Load(i * 4);
+}
+
+[numthreads(64, 1, 1)]
+void BuildSegments(uint3 id : SV_DispatchThreadID)
+{
+    uint k = id.x;
+    if (k >= _SegmentCount) return;
+    // Quad (a, a+2, a+1), (a+1, a+2, a+3) with a = 2p: the segment from point p to p + 1.
+    uint a = LoadIndex(k * 6);
+    _SegmentsOut[_SegmentBase + k] = _PointBase + a / 2;
+    // Mean segment length per mesh (read back once): GroomDeferredFeature draws meshes whose segments project long
+    // with the hardware rasterizer instead.
+    float len = distance(LoadFloat3(a, _PositionOffset), LoadFloat3(a + 2, _PositionOffset));
+    InterlockedAdd(_MeshLengths[_MeshIndex], (uint)min(len * 1e4 + .5, 65535.0));
+}
+
+#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRasterCommon.hlsl"
+
+uint _RaisedWords;
+
+[numthreads(64, 1, 1)]
+void ClearTargets(uint3 id : SV_DispatchThreadID)
+{
+    uint pixel = id.y * _GroupsX * 64 + id.x;
+    if (pixel < _RaisedWords) _SegmentRaised[pixel] = 0;
+    if (pixel >= (uint)(_ScreenSize.x * _ScreenSize.y)) return;
+    _OpticalDepth[pixel] = 0;
+    _NearestDepth[pixel] = 0;
+    _NearestId[pixel] = MH_GROOM_EMPTY;
+}
+
+[numthreads(64, 1, 1)]
+void RasterOpticalDepth(uint3 id : SV_DispatchThreadID)
+{
+    MH_RASTER_SEGMENT(
+        float alpha = saturate((pw.x * c[i0].alpha + pw.y * c[i1].alpha + pw.z * c[i2].alpha) * baseAlpha);
+        if (alpha > 1e-6)
+        {
+            alpha = min(alpha, .9999);
+            InterlockedAdd(_OpticalDepth[pixel], (uint)(-log(max(1 - alpha, .0001)) * MH_GROOM_TAU_SCALE + .5));
+        }
+    )
+}
+
+[numthreads(64, 1, 1)]
+void RasterNearestDepth(uint3 id : SV_DispatchThreadID)
+{
+    MH_RASTER_SEGMENT_EX(;,
+        uint depthBits = asuint(max(z, 0));
+        uint before;
+        InterlockedMax(_NearestDepth[pixel], depthBits, before);
+        raised = raised || before < depthBits;
+    ,
+        if (raised) MarkSegmentRaised(segment);
+    )
+}
+
+[numthreads(64, 1, 1)]
+void RasterNearestId(uint3 id : SV_DispatchThreadID)
+{
+    MH_RASTER_SEGMENT_EX(if (_Diagnostic != 4 && !SegmentRaised(segment)) return;,
+        // The depth kernel stored the maximum; kernels can round the same expression differently by an ULP or two.
+        if (abs(int(asuint(max(z, 0))) - int(_NearestDepth[pixel])) <= 4)
+        {
+            // Position along the segment: corners 1 and 3 are its far end.
+            float along = (i0 == 1 || i0 == 3 ? pw.x : 0) + (i1 == 1 || i1 == 3 ? pw.y : 0) + (i2 == 1 || i2 == 3 ? pw.z : 0);
+            _NearestId[pixel] = (segment << 8) | uint(saturate(along) * 255 + .5);
+        }
+    , ;)
+}
+
+// Optical depth and nearest depth in one pass (the id pass follows): one corner build per segment instead of two.
+[numthreads(64, 1, 1)]
+void RasterOpticalAndDepth(uint3 id : SV_DispatchThreadID)
+{
+    MH_RASTER_SEGMENT_EX(;,
+        float alpha = saturate((pw.x * c[i0].alpha + pw.y * c[i1].alpha + pw.z * c[i2].alpha) * baseAlpha);
+        if (alpha > 1e-6)
+        {
+            alpha = min(alpha, .9999);
+            InterlockedAdd(_OpticalDepth[pixel], (uint)(-log(max(1 - alpha, .0001)) * MH_GROOM_TAU_SCALE + .5));
+        }
+        uint depthBits = asuint(max(z, 0));
+        uint before;
+        InterlockedMax(_NearestDepth[pixel], depthBits, before);
+        raised = raised || before < depthBits;
+    ,
+        if (raised) MarkSegmentRaised(segment);
+    )
+}
+

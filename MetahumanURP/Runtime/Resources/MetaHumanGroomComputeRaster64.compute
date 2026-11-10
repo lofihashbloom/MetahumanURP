@@ -1,0 +1,36 @@
+// Single-pass variant of the deferred groom's compute rasterizer (GroomDeferredFeature, RasterMode.Compute): optical
+// depth by 32-bit atomic add and the nearest segment by one 64-bit atomic max of (device depth << 32 | segment << 8 |
+// position along it), reversed Z. Exact nearest selection (no separate id pass). Needs 64-bit buffer atomics.
+#pragma kernel ClearMerged
+#pragma kernel RasterMerged
+#pragma use_dxc
+#pragma require int64BufferAtomics
+
+#include "Packages/com.unity.metahuman/Runtime/Shaders/GroomRasterCommon.hlsl"
+
+RWStructuredBuffer<uint64_t> _Nearest64;
+
+[numthreads(64, 1, 1)]
+void ClearMerged(uint3 id : SV_DispatchThreadID)
+{
+    uint pixel = id.y * _GroupsX * 64 + id.x;
+    if (pixel >= (uint)(_ScreenSize.x * _ScreenSize.y)) return;
+    _OpticalDepth[pixel] = 0;
+    _Nearest64[pixel] = 0;
+}
+
+[numthreads(64, 1, 1)]
+void RasterMerged(uint3 id : SV_DispatchThreadID)
+{
+    MH_RASTER_SEGMENT(
+        float alpha = saturate((pw.x * c[i0].alpha + pw.y * c[i1].alpha + pw.z * c[i2].alpha) * baseAlpha);
+        if (alpha > 1e-6)
+        {
+            alpha = min(alpha, .9999);
+            InterlockedAdd(_OpticalDepth[pixel], (uint)(-log(max(1 - alpha, .0001)) * MH_GROOM_TAU_SCALE + .5));
+        }
+        float along = (i0 == 1 || i0 == 3 ? pw.x : 0) + (i1 == 1 || i1 == 3 ? pw.y : 0) + (i2 == 1 || i2 == 3 ? pw.z : 0);
+        uint payload = (segment << 8) | uint(saturate(along) * 255 + .5);
+        InterlockedMax(_Nearest64[pixel], ((uint64_t)asuint(max(z, 0)) << 32) | (uint64_t)payload);
+    )
+}

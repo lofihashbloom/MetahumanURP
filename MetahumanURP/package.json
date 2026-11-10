@@ -1,0 +1,28 @@
+{
+  "name": "com.unity.metahuman",
+  "version": "0.1.0",
+  "displayName": "MetaHuman for Unity (Prototype)",
+  "description": "Experimental MetaHuman interchange, source-data skin and eye adapters, normalized diffusion, native texture transport, independent desktop fiber scattering, hair-to-skin receiver shadows and URP groom visibility diagnostics. Independent integration; not an official Unity or Epic product.",
+  "unity": "6000.6",
+  "documentationUrl": "https://github.com/lofihashbloom/MetahumanURP/blob/HEAD/MetahumanURP/README.md",
+  "changelogUrl": "https://github.com/lofihashbloom/MetahumanURP/blob/HEAD/MetahumanURP/CHANGELOG.md",
+  "licensesUrl": "https://github.com/lofihashbloom/MetahumanURP/blob/HEAD/LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lofihashbloom/MetahumanURP.git"
+  },
+  "dependencies": {
+    "com.unity.render-pipelines.universal": "17.6.0",
+    "com.unity.burst": "2.0.0",
+    "com.unity.collections": "6.6.0",
+    "com.unity.mathematics": "1.4.0"
+  },
+  "keywords": [
+    "metahuman",
+    "urp",
+    "character"
+  ],
+  "author": {
+    "name": "Unreal to Unity Prototypes"
+  }
+}

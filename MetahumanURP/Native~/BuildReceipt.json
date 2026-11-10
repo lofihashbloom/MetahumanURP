@@ -1,0 +1,11 @@
+{
+  "upstream": "https://github.com/EpicGames/OpenRigLogic",
+  "branch": "5.8",
+  "commit": "d3d329bbd6992ac38adc1c1b24203ceb998f75c0",
+  "riglogicVersion": "13.2.9",
+  "abiVersion": 1,
+  "platform": "macOS arm64",
+  "minimumDeploymentTarget": "13.0",
+  "binarySha256": "a26a40b8b997644f20e5e43ed39200d616f2fa306b35ca0c4121790bd91f9c9a",
+  "cmakeBuildMatchesValidatedInitialBuildForFourPoses": true
+}

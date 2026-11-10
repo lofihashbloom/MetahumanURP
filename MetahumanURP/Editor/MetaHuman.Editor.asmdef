@@ -1,0 +1,7 @@
+{
+  "name": "MetaHuman.Editor",
+  "rootNamespace": "MetaHuman.Editor",
+  "references": ["MetaHuman.Runtime", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Editor"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

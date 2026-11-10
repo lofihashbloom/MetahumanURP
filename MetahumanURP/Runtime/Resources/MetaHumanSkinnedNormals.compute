@@ -1,0 +1,84 @@
+// Skinned normal recompute (SkinnedNormalRecompute / SkinnedNormalsFeature). Mirrors SkinnedNormalRecompute.Evaluate.
+// Recompute (stretch flattening included): rebuilds each vertex's local surface frame from the deformed positions (smooth area-weighted normal of its
+// welded neighbourhood, direction to one neighbour) and re-expresses the authored normal and tangent stored in that frame
+// at rest, into _Temp. Crease: blends each normal toward its neighbourhood's average where it departs from it by more
+// than at rest (creases the deformation made); run twice: _Temp first half -> second half, then second half -> the
+// deformed vertex buffer (_CreaseFinal).
+#pragma kernel Recompute
+#pragma kernel Crease
+
+struct VertexData
+{
+    uint triStart, triCount, self, neighbour;
+    float3 normal; float restCrease;
+    float3 tangent; float restArea;
+};
+
+StructuredBuffer<VertexData> _Vertices;
+StructuredBuffer<uint> _Triangles;
+RWByteAddressBuffer _Skinned;
+RWStructuredBuffer<float4> _Temp;   // two halves of 2 x _VertexCount: per vertex normal (w = 1 valid), tangent
+uint _VertexCount, _Stride, _NormalOffset, _TangentOffset, _HasTangent, _CreaseSource, _CreaseFinal;
+float _CreaseStart, _CreaseEnd;
+float2 _Stretch;   // area ratio (start, full): stretched skin takes the plain surface normal; (0, 0) off
+
+float3 Position(uint v) { return asfloat(_Skinned.Load3(v * _Stride)); }
+
+[numthreads(64, 1, 1)]
+void Recompute(uint id : SV_DispatchThreadID)
+{
+    if (id >= _VertexCount) return;
+    _Temp[2 * id] = 0;
+    VertexData d = _Vertices[id];
+    if (d.triCount == 0) return;
+    float3 sum = 0;
+    for (uint i = 0; i < d.triCount; i++)
+    {
+        uint j = 3 * (d.triStart + i);
+        float3 a = Position(_Triangles[j]);
+        sum += cross(Position(_Triangles[j + 1]) - a, Position(_Triangles[j + 2]) - a);
+    }
+    float len = length(sum);
+    if (len < 1e-20) return;
+    float3 n = sum / len;
+    float3 e = Position(d.neighbour) - Position(d.self);
+    e -= n * dot(e, n);
+    float el = length(e);
+    if (el < 1e-12) return;
+    float3 t = e / el, b = cross(n, t);
+    float3 ln = d.normal;
+    if (_Stretch.y > _Stretch.x && d.restArea > 0) ln = lerp(ln, float3(0, 0, 1), saturate((len / d.restArea - _Stretch.x) / (_Stretch.y - _Stretch.x)));
+    _Temp[2 * id] = float4(normalize(ln.x * t + ln.y * b + ln.z * n), 1);
+    _Temp[2 * id + 1] = float4(normalize(d.tangent.x * t + d.tangent.y * b + d.tangent.z * n), 0);
+}
+
+[numthreads(64, 1, 1)]
+void Crease(uint id : SV_DispatchThreadID)
+{
+    if (id >= _VertexCount) return;
+    uint src = _CreaseSource, dst = _CreaseSource == 0 ? 2 * _VertexCount : 0;
+    float4 own = _Temp[src + 2 * id];
+    if (_CreaseFinal == 0) _Temp[dst + 2 * id] = own;
+    if (own.w == 0) return;
+    VertexData d = _Vertices[id];
+    float3 n = own.xyz, avg = 0;
+    for (uint i = 0; i < 3 * d.triCount; i++)
+    {
+        float4 m = _Temp[src + 2 * _Triangles[3 * d.triStart + i]];
+        if (m.w > 0) avg += m.xyz;
+    }
+    float blend = 0;
+    float al = length(avg);
+    if (al > 1e-6)
+    {
+        avg /= al;
+        float crease = 1 - dot(n, avg);
+        blend = saturate((crease - d.restCrease - _CreaseStart) / max(_CreaseEnd - _CreaseStart, 1e-5));
+        if (blend > 0) n = normalize(lerp(n, avg, blend));
+    }
+    float3 t = _Temp[src + 2 * id + 1].xyz;
+    if (blend > 0) { float3 o = t - n * dot(t, n); if (dot(o, o) > 1e-12) t = normalize(o); }
+    if (_CreaseFinal == 0) { _Temp[dst + 2 * id] = float4(n, 1); _Temp[dst + 2 * id + 1] = float4(t, 0); return; }
+    _Skinned.Store3(id * _Stride + _NormalOffset, asuint(n));
+    if (_HasTangent != 0) _Skinned.Store3(id * _Stride + _TangentOffset, asuint(t));
+}

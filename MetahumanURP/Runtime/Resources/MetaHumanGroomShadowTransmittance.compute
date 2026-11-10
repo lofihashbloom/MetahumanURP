@@ -1,0 +1,69 @@
+// Hair self-shadow: per-light optical depth through a groom's extinction volume.
+// For every voxel centre, marches toward one light through the density volume and stores the optical depth
+// tau = integral of sigma ds (dimensionless). Strand fragments then sample tau once per light (trilinear) and
+// attenuate that light by exp(-tau). Independent implementation of a standard voxel transmittance precompute.
+// Voxels with no fibres nearby (outside the full-march mask) are sampled by strands only when those are displaced out
+// of the groom, so they march a coarse copy of the density in steps of its cell size instead.
+#pragma kernel March
+
+// Optical depth per voxel length (sigma * voxel), so values stay in half-float range on every platform.
+Texture3D<float> _MHGroomDensity;
+SamplerState sampler_linear_clamp;
+RWTexture3D<float> _MHGroomTau;
+Texture3D<float> _MHGroomCoarse;     // mean density over cells of _MHGroomCoarseScale.w voxels a side
+Texture3D<float> _MHGroomFullMarch;  // > 0: fibres nearby, full march
+
+float4 _MHGroomResolution;   // xyz: voxel counts, w: march step in voxels
+float4 _MHGroomSize;         // xyz: volume size in the volume's local units, w: smallest voxel size (local units)
+float4 _MHGroomLight;        // directional (w 0): xyz unit direction to the light, local units;
+                             // punctual   (w 1): xyz light position relative to the volume minimum, local units
+float4 _MHGroomMarch;        // x: start offset in voxels (skips the voxel's own fibres), y: extinction scale, z: max steps
+float4 _MHGroomCoarseScale;  // xyz: local position to coarse texture coordinates, w: empty-space step in voxels (0: full march everywhere)
+
+[numthreads(4, 4, 4)]
+void March(uint3 id : SV_DispatchThreadID)
+{
+    uint3 resolution = (uint3)_MHGroomResolution.xyz;
+    if (any(id >= resolution)) return;
+    float3 size = _MHGroomSize.xyz;
+    float voxel = _MHGroomSize.w;
+    float3 p = (id + .5) / _MHGroomResolution.xyz * size;
+    float3 toLight = _MHGroomLight.w > .5 ? _MHGroomLight.xyz - p : _MHGroomLight.xyz;
+    float lightDistance = _MHGroomLight.w > .5 ? length(toLight) : 1e30;
+    float3 d = toLight / max(length(toLight), 1e-20);
+
+    // Distance to the volume exit along d (slab test from inside the box).
+    float3 inv = 1 / (abs(d) > 1e-7 ? d : float3(1e-7, 1e-7, 1e-7));
+    float3 exitT = max((0 - p) * inv, (size - p) * inv);
+    float tExit = min(min(exitT.x, exitT.y), min(exitT.z, lightDistance));
+    float tStart = _MHGroomMarch.x * voxel;
+
+    float tau = 0;
+    if (tExit > tStart)
+    {
+        bool full = _MHGroomCoarseScale.w < .5 || _MHGroomFullMarch.Load(int4(id, 0)) > 0;
+        float stepLength = max(full ? _MHGroomResolution.w : max(_MHGroomCoarseScale.w, _MHGroomResolution.w), .25) * voxel;
+        uint steps = (uint)min(ceil((tExit - tStart) / stepLength), _MHGroomMarch.z);
+        float dt = (tExit - tStart) / max(steps, 1u);
+        float3 invSize = 1 / size;
+        [branch] if (full)
+        {
+            [loop] for (uint i = 0; i < steps; i++)
+            {
+                float3 q = (p + d * (tStart + (i + .5) * dt)) * invSize;
+                tau += _MHGroomDensity.SampleLevel(sampler_linear_clamp, q, 0);
+            }
+        }
+        else
+        {
+            [loop] for (uint i = 0; i < steps; i++)
+            {
+                float3 q = (p + d * (tStart + (i + .5) * dt)) * _MHGroomCoarseScale.xyz;
+                tau += _MHGroomCoarse.SampleLevel(sampler_linear_clamp, q, 0);
+            }
+        }
+        // Density stores sigma * voxel, so each sample covers dt / voxel voxel lengths.
+        tau *= dt / voxel;
+    }
+    _MHGroomTau[id] = tau * _MHGroomMarch.y;
+}
