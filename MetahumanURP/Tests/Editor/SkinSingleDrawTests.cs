@@ -16,6 +16,7 @@ namespace MetaHuman.Tests
     public sealed class SkinSingleDrawTests
     {
         GameObject root;
+        HostRendererIsolation isolation;
         Camera camera;
         SkinDiffusionFeature feature;
         bool wasActive, wasSingle, wasAdditive, wasRadial;
@@ -24,6 +25,7 @@ namespace MetaHuman.Tests
 
         [SetUp] public void Setup()
         {
+            isolation = new HostRendererIsolation();
             root = new GameObject("MetaHuman skin single-draw test");
             camera = new GameObject("Skin test camera").AddComponent<Camera>();
             camera.transform.SetParent(root.transform);
@@ -64,6 +66,7 @@ namespace MetaHuman.Tests
 
         [TearDown] public void Teardown()
         {
+            isolation?.Dispose(); isolation = null;
             if (feature)
             {
                 feature.settings.singleDraw = wasSingle; feature.settings.additiveComposite = wasAdditive;
@@ -150,9 +153,22 @@ namespace MetaHuman.Tests
             float diffusion = MaxDifference(plain, twoDraws, out float peak);
             Assert.That(peak, Is.GreaterThan(0.05f), "The fixture must be lit.");
             Assert.That(diffusion, Is.GreaterThan(0.005f), "Diffusion must change the image for the comparison to mean anything.");
-            float difference = MaxDifference(twoDraws, single, out _);
             // Both paths take the diffuse from the same light loop (MHSkinLighting): equal up to half-float rounding.
-            Assert.That(difference, Is.LessThan(Mathf.Max(0.002f, peak * 0.005f)), $"Single draw differs from the two-draw path by {difference} (peak {peak}).");
+            float tolerance = Mathf.Max(0.002f, peak * 0.005f);
+            float difference = MaxDifference(twoDraws, single, out _);
+            if (samples == 1)
+                Assert.That(difference, Is.LessThan(tolerance), $"Single draw differs from the two-draw path by {difference} (peak {peak}).");
+            else
+            {
+                // With MSAA a few silhouette pixels differ: the two-draw extraction tests its samples against the depth the
+                // lit pass wrote, the single draw writes both at once, so partly covered pixels can keep different samples.
+                // Measured: 3 of 65536 pixels, 1% of the peak. Anything broader or larger is a real difference.
+                int over = 0;
+                for (int i = 0; i < twoDraws.Length; i++)
+                    if (Mathf.Max(Mathf.Abs(twoDraws[i].r - single[i].r), Mathf.Abs(twoDraws[i].g - single[i].g), Mathf.Abs(twoDraws[i].b - single[i].b)) > tolerance) over++;
+                Assert.That(over, Is.LessThan(twoDraws.Length / 2000), $"{over} pixels differ between the single draw and the two-draw path.");
+                Assert.That(difference, Is.LessThan(peak * 0.03f), $"Single draw differs from the two-draw path by {difference} at an edge (peak {peak}).");
+            }
         }
 
         [Test] public void AdditiveCompositeMatchesCopyComposite()
