@@ -14,6 +14,7 @@ namespace MetaHuman.Tests
     public sealed class RenderingTests
     {
         GameObject root;
+        HostRendererIsolation isolation;
         Camera camera;
 
         T CameraFeature<T>() where T : UnityEngine.Rendering.Universal.ScriptableRendererFeature
@@ -31,6 +32,7 @@ namespace MetaHuman.Tests
         {
             // Use the runner's temporary scene; keep every fixture object below
             // one root and on an exclusive camera layer for deterministic cleanup.
+            isolation = new HostRendererIsolation();
             root = new GameObject("MetaHuman GPU test");
             camera = new GameObject("Rendering test camera").AddComponent<Camera>();
             camera.transform.SetParent(root.transform);
@@ -52,6 +54,7 @@ namespace MetaHuman.Tests
 
         [TearDown] public void Teardown()
         {
+            isolation?.Dispose(); isolation = null;
             if (root) Object.DestroyImmediate(root);
         }
 
