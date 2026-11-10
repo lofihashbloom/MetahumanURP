@@ -78,7 +78,7 @@ public static class FilmGrade
 
     /// <summary>Grades weights.x * a + weights.y * b + weights.z * c (scene-linear frames of one size; the centre square
     /// of height x height is graded) into <see cref="Output"/> (8-bit, display-encoded sRGB values, linear texture).</summary>
-    public static bool Process(CommandBuffer cmd, Texture a, Texture b, Texture c, Vector3 weights, Settings s, int frame)
+    public static bool Process(CommandBuffer cmd, Texture a, Texture b, Texture c, Vector4 weights, Settings s, int frame)
     {
         if (!shader) shader = Resources.Load<ComputeShader>("FilmGrade");
         if (!shader || !a || !b || !c) return false;

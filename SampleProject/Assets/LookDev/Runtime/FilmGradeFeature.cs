@@ -8,12 +8,13 @@ using UnityEngine.Rendering.Universal;
 // Split from FilmGrade.cs: a renderer feature is saved as an asset only when its class has a file of its own name.
 /// <summary>
 /// The teaser film grade as a URP renderer feature: after post-processing, keeps three scene-linear frames, grades their
-/// [1/4,1/2,1/4] blend (one frame of latency; off: the current frame only) and presents the square in the camera target.
+/// [1/4,1/2,1/4] blend (one frame of latency, fast changes left unblended; off: the current frame only) and presents the square in the camera target.
 /// </summary>
 public sealed class FilmGradeFeature : ScriptableRendererFeature
 {
     public FilmGrade.Settings settings = new FilmGrade.Settings();
     [Tooltip("[1/4,1/2,1/4] filter over three frames, as the offline video grade (one frame of latency)")] public bool temporal = true;
+    [Tooltip("Relative difference from the middle frame at which a neighbouring frame is left out of the filter, so fast changes such as a blink leave no ghost (0: always blend)")] [Range(0, 2)] public float temporalReject = .4f;
     [Tooltip("Write display-encoded values (for a capture that saves the target as is) instead of linear ones")] public bool encodedOutput;
     GradePass pass;
     Material present;
@@ -91,7 +92,7 @@ public sealed class FilmGradeFeature : ScriptableRendererFeature
             pushed++;
             Texture newest = history[slot], middle = history[(slot + 2) % 3], oldest = history[(slot + 1) % 3];
             bool ok = feature.temporal
-                ? FilmGrade.Process(cmd, oldest, middle, newest, new Vector3(.25f, .5f, .25f), feature.settings, pushed)
+                ? FilmGrade.Process(cmd, oldest, middle, newest, new Vector4(.25f, .5f, .25f, feature.temporalReject), feature.settings, pushed)
                 : FilmGrade.Process(cmd, newest, newest, newest, new Vector3(0, 1, 0), feature.settings, pushed);
             if (!ok) return;
             if (outputHandle == null || outputHandle.rt != FilmGrade.Output) { outputHandle?.Release(); outputHandle = RTHandles.Alloc(FilmGrade.Output); }
