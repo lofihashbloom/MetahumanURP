@@ -99,6 +99,8 @@ namespace MetaHuman.Rendering
                 return handle;
             }
 
+            readonly List<Light> visible = new List<Light>();   // reused: no per-frame list
+
             public override void RecordRenderGraph(RenderGraph graph, ContextContainer frame)
             {
                 var volume = HairReceiverShadowVolume.Active;
@@ -128,7 +130,7 @@ namespace MetaHuman.Rendering
                     any = true;
                 }
 
-                var visible = new List<Light>(lightData.visibleLights.Length);
+                visible.Clear();
                 foreach (var v in lightData.visibleLights) visible.Add(v.light);
                 var slotLights = new Light[HairReceiverShadowVolume.SlotCount];
                 for (int i = 0; i < slotLights.Length; i++) slotLights[i] = resolved[i].Valid ? resolved[i].light : null;

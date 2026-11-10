@@ -319,11 +319,17 @@ namespace MetaHuman.Groom
 
         static Light[] sceneLights = new Light[0];
         static int sceneLightsFrame = -1;
+        const int SceneLightRescanFrames = 30;
 
         static Light[] SceneLights()
         {
-            // Cached per rendered frame in play mode; edit mode (and tests) may not advance the frame count.
-            if (sceneLightsFrame != Time.renderedFrameCount || !Application.isPlaying)
+            // Resources.FindObjectsOfTypeAll walks every loaded object: in play mode the list is kept for SceneLightRescanFrames
+            // rendered frames (a new light is picked up within that delay) unless a cached light was destroyed. Edit mode
+            // (and tests) rescan every call, as the frame count may not advance there.
+            bool stale = !Application.isPlaying || sceneLightsFrame < 0 || Time.renderedFrameCount - sceneLightsFrame >= SceneLightRescanFrames
+                || Time.renderedFrameCount < sceneLightsFrame;
+            if (!stale) foreach (var l in sceneLights) if (!l) { stale = true; break; }
+            if (stale)
             {
                 // FindObjectsByType skips HideFlags.DontSave objects (tool-created rig lights); keep scene lights only.
                 var all = Resources.FindObjectsOfTypeAll<Light>();
@@ -481,6 +487,8 @@ namespace MetaHuman.Groom
         void ClearBlocks() => Apply(b => b.SetFloat(EnabledId, 0));
 
         // Per material index, preserving other components' properties (a per-index block overrides the renderer block).
+        static readonly List<Material> sharedScratch = new List<Material>();
+
         void Apply(Action<MaterialPropertyBlock> set)
         {
             if (renderers == null) return;
@@ -488,7 +496,8 @@ namespace MetaHuman.Groom
             foreach (var r in renderers)
             {
                 if (!r) continue;
-                int count = r.sharedMaterials.Length;
+                r.GetSharedMaterials(sharedScratch);   // sharedMaterials would allocate an array per renderer per frame
+                int count = sharedScratch.Count;
                 for (int i = 0; i < count; i++) { r.GetPropertyBlock(block, i); set(block); r.SetPropertyBlock(block, i); }
             }
         }

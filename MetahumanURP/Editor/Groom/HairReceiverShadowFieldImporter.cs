@@ -62,10 +62,21 @@ namespace MetaHuman.Editor.Groom
         static HairReceiverShadowField Create(Row row, string directory, string groomSha256)
         {
             int n = row.resolution;
-            if (n < 2 || row.shapeXYZ == null || row.shapeXYZ.Length != 3 || row.shapeXYZ[0] != n || row.shapeXYZ[1] != n || row.shapeXYZ[2] != n + 1)
-                throw new InvalidDataException("Field " + row.name + " must be N x N x (N+1)");
-            byte[] bytes = File.ReadAllBytes(Path.Combine(directory, row.file));
-            if (bytes.Length != n * n * (n + 1) * 4) throw new InvalidDataException("Field " + row.name + " has the wrong byte count");
+            // The builder writes 64 to 256; the cap also keeps n * n * (n + 1) * 4 far inside the range of long and of a
+            // Texture3D (a large n used to overflow int and pass the byte-count check).
+            if (n < 2 || n > MaximumResolution || row.shapeXYZ == null || row.shapeXYZ.Length != 3 || row.shapeXYZ[0] != n || row.shapeXYZ[1] != n || row.shapeXYZ[2] != n + 1)
+                throw new InvalidDataException("Field " + row.name + " must be N x N x (N+1) with N from 2 to " + MaximumResolution);
+            foreach (var values in new[] { row.originZMin, row.rightUMin, row.upVMin, row.forwardZMax })
+                if (values == null || values.Length != 4) throw new InvalidDataException("Field " + row.name + " has an incomplete light frame");
+            if (row.scales == null || row.scales.Length != 3) throw new InvalidDataException("Field " + row.name + " has no scales");
+            string path = Resolve(directory, row.file);
+            long expected = checked((long)n * n * (n + 1) * 4);
+            if (new FileInfo(path).Length != expected) throw new InvalidDataException("Field " + row.name + " has the wrong byte count");
+            byte[] bytes = File.ReadAllBytes(path);
+            if (string.IsNullOrEmpty(row.sha256)) throw new InvalidDataException("Field " + row.name + " has no sha256");
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                if (!string.Equals(BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", ""), row.sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Field " + row.name + ": SHA256 mismatch for " + row.file);
             var texture = new Texture3D(n, n, n + 1, TextureFormat.RFloat, false)
             {
                 name = row.name + " hair optical depth", filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp
@@ -85,6 +96,18 @@ namespace MetaHuman.Editor.Groom
             string error = field.Validate();
             if (error != null) throw new InvalidDataException(row.name + ": " + error);
             return field;
+        }
+
+        const int MaximumResolution = 512;
+
+        /// <summary>The data file named by a row: a plain file name next to Fields.json, never a path elsewhere.</summary>
+        static string Resolve(string directory, string file)
+        {
+            if (string.IsNullOrEmpty(file) || file != Path.GetFileName(file) || file.IndexOf('\\') >= 0 || file == "." || file == "..")
+                throw new InvalidDataException("Field data must be a file name next to Fields.json: " + file);
+            string path = Path.Combine(directory, file);
+            if (!File.Exists(path)) throw new FileNotFoundException("Field data missing", path);
+            return path;
         }
 
         static Vector4 V4(float[] a) => new Vector4(a[0], a[1], a[2], a[3]);

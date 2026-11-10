@@ -29,12 +29,31 @@ int _Size, _OffsetX, _OffsetY, _K, _StreakRadius, _Frame;
 float4 _Weights, _Gain, _StreakTint, _StreakA, _StreakW;   // _StreakA: a1, a1^(r+1), a2, a2^(r+1); _StreakW: w1, w2
 float _GlowThreshold, _GlowGain, _StreakThreshold, _StreakGain, _CA, _Sat, _Contrast, _Vignette, _Grain;
 
+// Mean of a 5 x 5 pixel area (9 taps): the ghost test compares areas, so a region that changed (a lid over an eye) is
+// caught while the pixel-scale flicker of thin strands and grain, which the filter is there to smooth, is not.
+float3 Area(Texture2D<float4> t, int2 p)
+{
+    float3 sum = 0;
+    for (int y = -2; y <= 2; y += 2) for (int x = -2; x <= 2; x += 2) sum += t[clamp(p + int2(x, y), int2(_OffsetX, _OffsetY), int2(_OffsetX, _OffsetY) + _Size - 1)].rgb;
+    return sum / 9;
+}
+float Keep(float3 x, float3 middle)
+{
+    float difference = length(x - middle) / (max(dot(x, LUM), dot(middle, LUM)) + .02);
+    return 1 - smoothstep(.4 * _Weights.w, _Weights.w, difference);
+}
+
 [numthreads(8, 8, 1)]
 void Prepare(uint3 id : SV_DispatchThreadID)
 {
     if ((int)id.x >= _Size || (int)id.y >= _Size) return;
     int2 p = int2(id.xy) + int2(_OffsetX, _OffsetY);
-    float3 v = _Weights.x * _A[p].rgb + _Weights.y * _B[p].rgb + _Weights.z * _C[p].rgb;
+    // Three-frame blend around the middle frame. Where a neighbour differs strongly from it (a blink, a fast edge) the
+    // neighbour is left out, so the previous frame does not show through as a ghost; _Weights.w is that difference (0: off).
+    float3 b = _B[p].rgb;
+    float wa = _Weights.x, wc = _Weights.z;
+    if (_Weights.w > 0) { float3 area = Area(_B, p); wa *= Keep(Area(_A, p), area); wc *= Keep(Area(_C, p), area); }
+    float3 v = wa * _A[p].rgb + wc * _C[p].rgb + (_Weights.x + _Weights.y + _Weights.z - wa - wc) * b;
     v = max(v, 0) * _Gain.rgb;
     float lum = dot(v, LUM);
     _Lin[id.xy] = float4(v, 1);

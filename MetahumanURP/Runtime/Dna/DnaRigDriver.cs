@@ -137,6 +137,12 @@ namespace MetaHuman.Dna
             rig.Evaluate(inputs, Mathf.Clamp(lod, 0, rig.LodCount - 1));
             EvaluationCount++;
             float[] neutral = rig.NeutralJoints, delta = rig.JointDeltas;
+            // Which joints belong to the body: a string test per joint, done once per rig instead of every frame.
+            if (bodyJoint == null || bodyJoint.Length != joints.Length)
+            {
+                bodyJoint = new bool[joints.Length];
+                for (int i = 0; i < joints.Length; i++) bodyJoint[i] = IsBodyJoint(rig.JointNames[i]);
+            }
             for (int i = 0; i < joints.Length; i++)
             {
                 var joint = joints[i];
@@ -144,7 +150,7 @@ namespace MetaHuman.Dna
                 int o = i * 10;
                 var n = DnaCoordinates.Rotation(neutral[o + 3], neutral[o + 4], neutral[o + 5], neutral[o + 6]);
                 var d = DnaCoordinates.Rotation(delta[o + 3], delta[o + 4], delta[o + 5], delta[o + 6]);
-                if (layerBodyJoints && IsBodyJoint(rig.JointNames[i]))
+                if (layerBodyJoints && bodyJoint[i])
                 {
                     // Base = the joint's animated local pose. When nothing else wrote the joint since our last
                     // write, keep the previous base so deltas never accumulate.
@@ -172,17 +178,19 @@ namespace MetaHuman.Dna
             }
         }
 
-        /// <summary>
-        /// Rig channel for each mesh blend shape, or -1. Imported MetaHuman shapes are named
-        /// "&lt;mesh&gt;_lodN_mesh__&lt;channel&gt;" (e.g. head_lod0_mesh__brow_down_L) while the DNA names the channel only;
-        /// one channel can drive shapes on several meshes. Names without the mesh prefix match as-is.
-        /// </summary>
         /// <summary>DNA joints that belong to the body skeleton (everything except FACIAL_ joints).</summary>
+        bool[] bodyJoint;
+
         public static bool IsBodyJoint(string name) => !name.StartsWith("FACIAL_", StringComparison.Ordinal);
 
         static bool SamePose(Transform t, Vector3 position, Quaternion rotation, Vector3 scale) =>
             (t.localPosition - position).sqrMagnitude < 1e-12f && Quaternion.Dot(t.localRotation, rotation) > 0.9999999f && (t.localScale - scale).sqrMagnitude < 1e-12f;
 
+        /// <summary>
+        /// Rig channel for each mesh blend shape, or -1. Imported MetaHuman shapes are named
+        /// "&lt;mesh&gt;_lodN_mesh__&lt;channel&gt;" (e.g. head_lod0_mesh__brow_down_L) while the DNA names the channel only;
+        /// one channel can drive shapes on several meshes. Names without the mesh prefix match as-is.
+        /// </summary>
         public static int[] MapBlendShapes(IReadOnlyList<string> meshShapes, IReadOnlyList<string> rigChannels)
         {
             var byName = new Dictionary<string, int>(StringComparer.Ordinal);

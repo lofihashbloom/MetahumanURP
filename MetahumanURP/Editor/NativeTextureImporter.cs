@@ -115,7 +115,8 @@ namespace MetaHuman.Editor
 
         public override void OnImportAsset(AssetImportContext context)
         {
-            var target = EditorUserBuildSettings.activeBuildTarget;
+            // The target this import is for (the asset database reimports per platform), not the editor's active one.
+            var target = context.selectedBuildTarget;
             if (target != BuildTarget.StandaloneOSX && target != BuildTarget.StandaloneWindows64)
                 throw new NotSupportedException("Native block textures support desktop macOS and Windows 64-bit targets only. No decompression fallback is performed.");
 

@@ -200,6 +200,15 @@ namespace MetaHuman.Rendering
                 renderers.Add(mr);
                 if (r.sharedMaterials.Length != 1) multiMaterialRenderer = true;
             }
+            // A stable order (name, then asset identity): the hardware mode writes each material's index to its
+            // _MHGroomDeferredId, and scene-scan order would rewrite those values on shared material assets at random.
+            // (Insertion sort: stable, so equally named materials keep their relative order, and nothing is allocated.)
+            for (int i = 1; i < materials.Count; i++)
+            {
+                var m = materials[i]; int j = i - 1;
+                while (j >= 0 && string.CompareOrdinal(materials[j].name, m.name) > 0) { materials[j + 1] = materials[j]; j--; }
+                materials[j + 1] = m;
+            }
             // Shade groups: renderers of one material bound to the same self-shadow volume (its per-renderer property
             // block) shade together, with the first renderer's property block.
             var volumes = MetaHuman.Groom.GroomShadowVolume.Active;

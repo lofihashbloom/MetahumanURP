@@ -47,6 +47,8 @@ bool UGroomDataExportLibrary::ExportBuiltGroomAttributes(const FString& AssetPat
     using namespace UE::DerivedData;
     UGroomAsset* Groom = LoadObject<UGroomAsset>(nullptr, *AssetPath);
     if (!Groom || !IFileManager::Get().MakeDirectory(*OutputDirectory, true)) return false;
+    // Output files are named after the groom asset (they used to carry one fixed character name).
+    const FString OutputPrefix = Groom->GetName() + TEXT("-");
     auto Root = MakeShared<FJsonObject>();
     Root->SetStringField(TEXT("asset"), AssetPath);
     Root->SetStringField(TEXT("format"), TEXT("MHGROOM_PLATFORM_SNAPSHOT_1"));
@@ -287,12 +289,12 @@ bool UGroomDataExportLibrary::ExportBuiltGroomAttributes(const FString& AssetPat
         const ANSICHAR Magic[] = "MHGRM001"; BuiltFile.Serialize((void*)Magic, 8);
         BuiltFile << ExportedCurves << ExportedPoints;
         BuiltFile.Serialize(BuiltCurveRecords.GetData(), BuiltCurveRecords.Num()); BuiltFile.Serialize(BuiltPointRecords.GetData(), BuiltPointRecords.Num());
-        bComplete &= FFileHelper::SaveArrayToFile(BuiltFile, *FPaths::Combine(OutputDirectory, TEXT("Kellan-NativeBuilt.mhgroom")));
-        bComplete &= FFileHelper::SaveArrayToFile(BuiltSourceIds, *FPaths::Combine(OutputDirectory, TEXT("Kellan-NativeBuiltOriginalCurveIds.uint32.bin")));
-        bComplete &= FFileHelper::SaveArrayToFile(BuiltPointAttributes, *FPaths::Combine(OutputDirectory, TEXT("Kellan-NativeBuiltPointData.u-radius-groupPoint.bin")));
-        Root->SetStringField(TEXT("nativeBuiltGroom"), TEXT("Kellan-NativeBuilt.mhgroom"));
-        Root->SetStringField(TEXT("nativeBuiltOriginalCurveIds"), TEXT("Kellan-NativeBuiltOriginalCurveIds.uint32.bin"));
-        Root->SetStringField(TEXT("nativeBuiltPointData"), TEXT("Kellan-NativeBuiltPointData.u-radius-groupPoint.bin"));
+        bComplete &= FFileHelper::SaveArrayToFile(BuiltFile, *FPaths::Combine(OutputDirectory, OutputPrefix + TEXT("NativeBuilt.mhgroom")));
+        bComplete &= FFileHelper::SaveArrayToFile(BuiltSourceIds, *FPaths::Combine(OutputDirectory, OutputPrefix + TEXT("NativeBuiltOriginalCurveIds.uint32.bin")));
+        bComplete &= FFileHelper::SaveArrayToFile(BuiltPointAttributes, *FPaths::Combine(OutputDirectory, OutputPrefix + TEXT("NativeBuiltPointData.u-radius-groupPoint.bin")));
+        Root->SetStringField(TEXT("nativeBuiltGroom"), OutputPrefix + TEXT("NativeBuilt.mhgroom"));
+        Root->SetStringField(TEXT("nativeBuiltOriginalCurveIds"), OutputPrefix + TEXT("NativeBuiltOriginalCurveIds.uint32.bin"));
+        Root->SetStringField(TEXT("nativeBuiltPointData"), OutputPrefix + TEXT("NativeBuiltPointData.u-radius-groupPoint.bin"));
         Root->SetStringField(TEXT("nativeBuiltPointDataFormat"), TEXT("Per built point:float32 normalized arc U,float32 physical radius centimetres,uint32 original non-guide point index within its source group. Includes authored helper ending points; mapped source indices may repeat."));
     }
     Root->SetBoolField(TEXT("allSourceMappingsAccepted"), bAllMappingsAccepted);
@@ -302,10 +304,10 @@ bool UGroomDataExportLibrary::ExportBuiltGroomAttributes(const FString& AssetPat
         const ANSICHAR Magic[] = "MHGRM001"; GpuFile.Serialize((void*)Magic, 8);
         GpuFile << ExportedCurves << ExportedPoints;
         GpuFile.Serialize(GpuCurveRecords.GetData(), GpuCurveRecords.Num()); GpuFile.Serialize(GpuPointRecords.GetData(), GpuPointRecords.Num());
-        bComplete &= FFileHelper::SaveArrayToFile(GpuFile, *FPaths::Combine(OutputDirectory, TEXT("Kellan-NativePacked.mhgroom")));
-        bComplete &= FFileHelper::SaveArrayToFile(GpuPointFields, *FPaths::Combine(OutputDirectory, TEXT("Kellan-NativePackedPointFields.bin")));
-        Root->SetStringField(TEXT("nativePackedGroom"), TEXT("Kellan-NativePacked.mhgroom"));
-        Root->SetStringField(TEXT("nativePackedPointFields"), TEXT("Kellan-NativePackedPointFields.bin"));
+        bComplete &= FFileHelper::SaveArrayToFile(GpuFile, *FPaths::Combine(OutputDirectory, OutputPrefix + TEXT("NativePacked.mhgroom")));
+        bComplete &= FFileHelper::SaveArrayToFile(GpuPointFields, *FPaths::Combine(OutputDirectory, OutputPrefix + TEXT("NativePackedPointFields.bin")));
+        Root->SetStringField(TEXT("nativePackedGroom"), OutputPrefix + TEXT("NativePacked.mhgroom"));
+        Root->SetStringField(TEXT("nativePackedPointFields"), OutputPrefix + TEXT("NativePackedPointFields.bin"));
         Root->SetStringField(TEXT("nativePackedPointFieldsFormat"), TEXT("Per point:float32 UByte/255,float32 Radius6/63*Header.MaxRadiusCm,uint8 Radius6,uint8 Type,uint8 UByte,uint8 reserved0. Position=public FFloat16 fields.GetFloat()+public bulk.GetPositionOffset() cast to FVector3f. No position or radius packing/generator code copied."));
     }
     Root->SetBoolField(TEXT("allPublicGpuFieldsDecoded"), bGpuFieldsComplete);

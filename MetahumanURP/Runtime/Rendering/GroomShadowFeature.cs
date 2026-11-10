@@ -112,6 +112,8 @@ namespace MetaHuman.Rendering
                 renderPassEvent = (RenderPassEvent)((int)RenderPassEvent.BeforeRenderingOpaques - 2);
             }
 
+            readonly List<Light> visible = new List<Light>();   // reused: no per-frame list
+
             public override void RecordRenderGraph(RenderGraph graph, ContextContainer frame)
             {
                 var lightData = frame.Get<UniversalLightData>();
@@ -121,7 +123,7 @@ namespace MetaHuman.Rendering
                 // Main thread: volumes pick lights, bind their renderers and queue only stale transmittance.
                 foreach (var volume in GroomShadowVolume.Active) if (volume) volume.Prepare(data.dispatches);
 
-                var visible = new List<Light>(lightData.visibleLights.Length);
+                visible.Clear();
                 foreach (var v in lightData.visibleLights) visible.Add(v.light);
                 int capacity = Mathf.Min(256, UniversalRenderPipeline.maxVisibleAdditionalLights);
                 var ids = MapAdditionalLightIds(visible, lightData.mainLightIndex, capacity, out data.mainId);

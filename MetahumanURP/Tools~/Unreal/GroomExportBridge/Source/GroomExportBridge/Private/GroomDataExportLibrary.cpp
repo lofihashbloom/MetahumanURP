@@ -30,6 +30,10 @@ bool UGroomDataExportLibrary::ExportGroomData(const FString& AssetPath, const FS
     int32 StrandCount = Description.GetNumStrands(), VertexCount = Description.GetNumVertices();
     Bytes << StrandCount << VertexCount;
     int32 First = 0;
+    // Width per vertex when the groom has no per-vertex widths: the strand's (or the groom's) width, never 0.
+    // A zero width made the receiver-shadow builder divide 0 by 0.
+    TArray<float> FallbackWidths;
+    FallbackWidths.SetNumZeroed(VertexCount);
     for (int32 S = 0; S < StrandCount; ++S)
     {
         const FStrandID Id(S);
@@ -39,6 +43,7 @@ bool UGroomDataExportLibrary::ExportGroomData(const FString& AssetPath, const FS
         float U = UV.X, V = UV.Y;
         float Width = StrandWidths.IsValid() ? StrandWidths[Id] : (GroomWidths.IsValid() ? GroomWidths[FGroomID(0)] : 0.f);
         Bytes << First << Count << Guide << Group << U << V << Width;
+        for (int32 K = 0; K < Count; ++K) FallbackWidths[First + K] = Width;
         First += Count;
     }
     if (First != VertexCount) return false;
@@ -47,7 +52,7 @@ bool UGroomDataExportLibrary::ExportGroomData(const FString& AssetPath, const FS
         const FVertexID Id(V);
         const FVector3f Position = Positions[Id];
         float X = Position.X, Y = Position.Y, Z = Position.Z;
-        float Width = VertexWidths.IsValid() ? VertexWidths[Id] : 0.f;
+        float Width = VertexWidths.IsValid() ? VertexWidths[Id] : FallbackWidths[V];
         Bytes << X << Y << Z << Width;
     }
     return FFileHelper::SaveArrayToFile(Bytes, *FilePath);
