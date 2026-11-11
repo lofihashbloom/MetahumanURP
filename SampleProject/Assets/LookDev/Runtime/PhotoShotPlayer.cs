@@ -36,6 +36,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
 
     [Header("Playback")]
     public bool loop = true;
+    [Tooltip("Space restarts the line, C toggles the camera move.")] public bool keyboardShortcuts = true;
     [Min(0)] public float pauseSeconds = 1.5f;
     public bool bindFacialGrooms = true;
 
@@ -131,7 +132,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
     {
         if (!Application.isPlaying) return;
 #if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current == null) return;
+        if (Keyboard.current == null || !keyboardShortcuts) return;
         if (Keyboard.current.spaceKey.wasPressedThisFrame) Restart();
         if (Keyboard.current.cKey.wasPressedThisFrame) cameraMove = !cameraMove;
 #endif

@@ -42,6 +42,18 @@ Taro says one line on a loop while the camera orbits and pushes in. In Play mode
 
 Limits: hair shadows on the skin are baked for the rest pose, skin scattering is screen-space, and the leather uses the skin shader. None of this is Unreal or DNA parity.
 
+## On-device conversation (Unity Sentis)
+
+`Assets/Taro/TaroSentis.unity` turns Taro into a chat partner that runs entirely on the device through Unity Inference Engine (Sentis): type a line, Taro answers in one sentence, speaks it and lip-syncs it on the DNA rig.
+
+- **Reply:** [Gemma 3 270M IT](https://huggingface.co/Sky-Kim/com.sky.sentis.gemma3-270m-it), with the last three exchanges as context.
+- **Voice:** [Supertonic](https://huggingface.co/Sky-Kim/com.sky.sentis.supertonic) TTS (voice M5; Korean and Japanese are detected from the text).
+- **Face:** [NeuroSync](https://huggingface.co/Sky-Kim/com.sky.sentis.neurosync) audio-to-face curves, mapped from ARKit channels to `CTRL_expressions` (`ArkitToDna`) and played on the audio clock with a short ease in and out.
+
+The idle performance (blinks, gaze, head and hair) and the camera orbit of the sample shot are kept. While the input field is not focused, **Space** replays the last reply and **C** pauses or resumes the camera; **Esc** stops a reply. The scene is a copy of `TaroPhoto.unity` with `LocalAvatar` on Taro, the chat UI (reply text at the top, the input field at the bottom) and its own copy of the pipeline with sharper spot-light shadows (`Assets/Taro/Rendering/Sentis`).
+
+The three models come as UPM packages from Hugging Face (Git LFS, about 3 GB on first import); their licences are listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Input handling is set to **Both** because the chat field is a uGUI `InputField`. In the Editor the models load from the packages; a player build needs the `Models~` folders of the Gemma and Supertonic packages copied to `StreamingAssets/<package name>` (NeuroSync writes its own at build time).
+
 ## Licences
 
 The original code, shaders and tooling are MIT licensed ([`LICENSE`](LICENSE)). The sample also contains third-party content, which keeps its own licence: the MetaHuman character Taro (Epic Games), the leather jacket derived from Unity's Time Ghost character, and a speech recording generated with ElevenLabs. Their sources, licences and what was changed are listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). That content is stored through Git LFS in `SampleProject/Assets/Taro`.

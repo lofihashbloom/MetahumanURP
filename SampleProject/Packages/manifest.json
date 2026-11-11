@@ -41,6 +41,9 @@
     "com.unity.modules.wind": "1.0.0",
     "com.unity.modules.xr": "1.0.0",
     "com.unity.render-pipelines.universal": "17.6.0",
-    "com.unity.ugui": "2.6.0"
+    "com.unity.ugui": "2.6.0",
+    "com.sky.sentis.gemma3-270m-it": "https://huggingface.co/Sky-Kim/com.sky.sentis.gemma3-270m-it.git",
+    "com.sky.sentis.neurosync": "https://huggingface.co/Sky-Kim/com.sky.sentis.neurosync.git",
+    "com.sky.sentis.supertonic": "https://huggingface.co/Sky-Kim/com.sky.sentis.supertonic.git"
   }
 }
