@@ -129,6 +129,36 @@ namespace MetaHuman.Tests
             finally { UnityEngine.Object.DestroyImmediate(instance); }
         }
 
+        [Test]
+        public void LayeredBodyJointFollowsSlowAnimation()
+        {
+            using (var check = OpenKellan()) { }
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/MetaHumanGenerated/Kellan/Kellan.prefab");
+            if (!prefab) Assert.Ignore("Local Kellan prefab fixture is absent.");
+            var instance = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                var driver = instance.GetComponent<DnaRigDriver>();
+                driver.Initialize();
+                var neck = driver.face.rootBone.GetComponentsInChildren<Transform>(true).Single(t => t.name == "neck_01");
+                var bind = neck.localRotation;
+                driver.ClearControls(); driver.EvaluateNow();
+                float Yaw() => Mathf.DeltaAngle(0, (Quaternion.Inverse(bind) * neck.localRotation).eulerAngles.y);
+                // 0.01 degrees per evaluation is below what a tolerance on the written pose can tell from no motion.
+                float previous = Yaw();
+                for (int i = 1; i <= 20; i++)
+                {
+                    neck.localRotation = Quaternion.Euler(0, .01f * i, 0) * bind;
+                    driver.EvaluateNow();
+                    float yaw = Yaw();
+                    Assert.That(yaw - previous, Is.EqualTo(.01f).Within(.002f), $"evaluation {i}");
+                    previous = yaw;
+                }
+                driver.Shutdown();
+            }
+            finally { UnityEngine.Object.DestroyImmediate(instance); }
+        }
+
         [Test] public void AnimatedMapRegionsMatchDnaOrMaterialNamesAndPackIntoSliceChannels()
         {
             string[] rig = { "head_wm1_normal.head_wm1_blink_L", "head_cm1_color.head_wm1_blink_L", "head_wm3_normal.head_wm13_lips_UL" };
