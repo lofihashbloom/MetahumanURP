@@ -26,6 +26,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
     public bool cameraMove = true;
     [Tooltip("Camera yaw around the head in degrees at the start and the end of the line (eased).")] public float orbitFrom = 24, orbitTo = -30;
     [Tooltip("Fraction of the camera distance covered by the push-in over the line.")] [Range(0, .9f)] public float push = .358f;
+    [Tooltip("Seconds of one camera pass played back and forth on its own clock, which stops while the camera move is off; 0 times the move to the line.")] [Min(0)] public float cameraSweepSeconds;
 
     [Header("Gesture")]
     [Tooltip("Yaw, pitch and roll amplitudes of the idle head motion in degrees; w: breathing (chest pitch) in degrees.")]
@@ -36,6 +37,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
 
     [Header("Playback")]
     public bool loop = true;
+    [Tooltip("Space restarts the line, C toggles the camera move.")] public bool keyboardShortcuts = true;
     [Min(0)] public float pauseSeconds = 1.5f;
     public bool bindFacialGrooms = true;
 
@@ -59,6 +61,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
     RenderPipelineAsset previousPipeline;
     bool pipelineSwapped, started;
     int warmup, jawControl = -1;
+    float sweepClock;
     GroomSway[] sways = new GroomSway[0];
     readonly System.Collections.Generic.List<(Renderer renderer, int slot, Color colour)> mouthSlots = new System.Collections.Generic.List<(Renderer, int, Color)>();
     MaterialPropertyBlock block;
@@ -108,7 +111,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
         for (int i = 0; i < chests.Length; i++) if (chests[i]) chestRest[i] = chests[i].localRotation;
         if (view) { cameraRestPosition = view.transform.position; cameraRest = view.transform.rotation; }
         mouthSlots.Clear(); jawControl = track ? System.Array.IndexOf(track.controls, "CTRL_expressions.jawOpen") : -1;
-        if (mouthShade > 0 && jawControl >= 0)
+        if (mouthShade > 0)
             foreach (var r in GetComponentsInChildren<Renderer>(true))
             {
                 var shared = r.sharedMaterials;
@@ -131,7 +134,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
     {
         if (!Application.isPlaying) return;
 #if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current == null) return;
+        if (Keyboard.current == null || !keyboardShortcuts) return;
         if (Keyboard.current.spaceKey.wasPressedThisFrame) Restart();
         if (Keyboard.current.cKey.wasPressedThisFrame) cameraMove = !cameraMove;
 #endif
@@ -142,6 +145,7 @@ public sealed class PhotoShotPlayer : MonoBehaviour
         if (!Application.isPlaying || !track || !rig || !started) return;
         if (warmup > 0) { if (--warmup == 0) Restart(); Pose(0); return; }
         Clock += Time.deltaTime;
+        if (cameraMove && cameraSweepSeconds > 0) sweepClock += Time.deltaTime;
         // The speech is the master clock: a slow frame stalls Time.deltaTime (it is clamped) but not the audio, and the
         // lips would then trail the voice for the rest of the line.
         // timeSamples stays 0 during the lead-in (PlayDelayed reports isPlaying before any sound): only follow real audio.
@@ -159,12 +163,13 @@ public sealed class PhotoShotPlayer : MonoBehaviour
     public void Pose(float frame)
     {
         float seconds = frame / Mathf.Max(track.framesPerSecond, 1e-3f);
-        float t = Mathf.Clamp01(frame / Mathf.Max(track.frames - 1, 1)), ease = t * t * (3 - 2 * t);
+        bool sweep = cameraSweepSeconds > 0;
+        float t = sweep ? Mathf.PingPong(sweepClock / cameraSweepSeconds, 1) : Mathf.Clamp01(frame / Mathf.Max(track.frames - 1, 1)), ease = t * t * (3 - 2 * t);
         float cameraYaw = Mathf.Lerp(orbitFrom, orbitTo, ease);
         Vector3 right = Vector3.right, forward = Vector3.forward;
         if (view)
         {
-            if (cameraMove)
+            if (cameraMove || sweep)
             {
                 var yaw = Quaternion.Euler(0, cameraYaw, 0);
                 view.transform.SetPositionAndRotation(anchor + yaw * (cameraRestPosition - anchor) * Mathf.Lerp(1, 1 - push, ease), yaw * cameraRest);
@@ -173,23 +178,13 @@ public sealed class PhotoShotPlayer : MonoBehaviour
         }
 
         for (int c = 0; c < track.controls.Length; c++) rig.SetRawControl(track.controls[c], track.Sample(c, frame));
-        if (mouthSlots.Count > 0)
-        {
-            // Per-renderer override: the material assets are not modified.
-            float jaw = track.Sample(jawControl, frame);
-            float w = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(mouthShadeJaw.x, mouthShadeJaw.y, jaw)) * (1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(mouthShadeJaw.z, mouthShadeJaw.w, jaw)));
-            float k = 1 - mouthShade * w; block ??= new MaterialPropertyBlock();
-            foreach (var (r, slot, colour) in mouthSlots)
-            {
-                r.GetPropertyBlock(block, slot); block.SetColor(BaseColor, new Color(colour.r * k, colour.g * k, colour.b * k, colour.a)); r.SetPropertyBlock(block, slot);
-            }
-        }
+        if (jawControl >= 0) ShadeMouth(track.Sample(jawControl, frame));
         if (!head) return;
 
         // Idle motion: slow layered sines. The turn is shared 40/60 between neck and head.
         const float Tau = 6.283f;
         float Yaw(float s) => gesture.x * (.7f * Mathf.Sin(Tau * .21f * s + phase) + .3f * Mathf.Sin(Tau * .53f * s + 2 * phase));
-        float follow = cameraMove ? headFollow * cameraYaw : 0;
+        float follow = cameraMove || sweep ? headFollow * cameraYaw : 0;
         float headYaw = Yaw(seconds) + follow;
         float pitch = gesture.y * (.6f * Mathf.Sin(Tau * .29f * seconds + 1.7f * phase) + .4f * Mathf.Sin(Tau * .71f * seconds + phase));
         float roll = gesture.z * Mathf.Sin(Tau * .17f * seconds + 2.3f * phase);
@@ -209,5 +204,18 @@ public sealed class PhotoShotPlayer : MonoBehaviour
         Quaternion Turn(float share) => Quaternion.AngleAxis(headYaw * share, Vector3.up) * Quaternion.AngleAxis(pitch * share, right) * Quaternion.AngleAxis(roll * share, forward);
         if (neck) { neck.localRotation = neckRest; neck.rotation = Turn(.4f) * neck.rotation; }
         head.localRotation = headRest; head.rotation = Turn(neck ? .6f : 1f) * head.rotation;
+    }
+
+    /// <summary>Darkens the mouth interior for a jawOpen value. Pose calls it with the track's jaw; a component that drives the jaw itself calls it after the track.</summary>
+    public void ShadeMouth(float jaw)
+    {
+        if (mouthSlots.Count == 0) return;
+        // Per-renderer override: the material assets are not modified.
+        float w = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(mouthShadeJaw.x, mouthShadeJaw.y, jaw)) * (1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(mouthShadeJaw.z, mouthShadeJaw.w, jaw)));
+        float k = 1 - mouthShade * w; block ??= new MaterialPropertyBlock();
+        foreach (var (r, slot, colour) in mouthSlots)
+        {
+            r.GetPropertyBlock(block, slot); block.SetColor(BaseColor, new Color(colour.r * k, colour.g * k, colour.b * k, colour.a)); r.SetPropertyBlock(block, slot);
+        }
     }
 }

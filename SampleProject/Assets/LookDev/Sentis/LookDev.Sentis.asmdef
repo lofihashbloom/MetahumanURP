@@ -1,0 +1,31 @@
+{
+    "name": "LookDev.Sentis",
+    "rootNamespace": "",
+    "references": [
+        "LookDev.Runtime",
+        "MetaHuman.Runtime",
+        "Unity.InputSystem",
+        "UnityEngine.UI",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Gemma3",
+        "Sky.Sentis.Supertonic",
+        "Sky.Sentis.NeuroSync"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "LOOKDEV_GEMMA3",
+        "LOOKDEV_SUPERTONIC",
+        "LOOKDEV_NEUROSYNC"
+    ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.gemma3-270m-it", "expression": "0.0.0", "define": "LOOKDEV_GEMMA3" },
+        { "name": "com.sky.sentis.supertonic", "expression": "0.0.0", "define": "LOOKDEV_SUPERTONIC" },
+        { "name": "com.sky.sentis.neurosync", "expression": "0.0.0", "define": "LOOKDEV_NEUROSYNC" }
+    ],
+    "noEngineReferences": false
+}
