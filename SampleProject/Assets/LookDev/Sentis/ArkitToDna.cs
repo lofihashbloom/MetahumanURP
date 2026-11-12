@@ -76,8 +76,11 @@ public sealed class ArkitToDna
 
     readonly string[] controls;
     readonly List<(int channel, int control, float weight, bool upper)> links = new List<(int, int, float, bool)>();
-    readonly int stride;
+    readonly int stride, jaw;
     readonly float[] values;
+
+    /// <summary>The jawOpen value written by the last Apply (0 to 1).</summary>
+    public float JawOpen => jaw >= 0 ? Mathf.Clamp01(values[jaw]) : 0;
 
     // stride: values per frame in the curve buffer.
     public ArkitToDna(ICollection<string> rigControls, int stride)
@@ -99,6 +102,7 @@ public sealed class ArkitToDna
             }
         }
         controls = names.ToArray();
+        jaw = names.IndexOf(P + "jawOpen");
         values = new float[controls.Length];
         if (missing.Count > 0) Debug.LogWarning("DNA controls not in this rig: " + string.Join(", ", missing));
     }

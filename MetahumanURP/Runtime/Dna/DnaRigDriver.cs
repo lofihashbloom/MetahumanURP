@@ -183,10 +183,8 @@ namespace MetaHuman.Dna
 
         public static bool IsBodyJoint(string name) => !name.StartsWith("FACIAL_", StringComparison.Ordinal);
 
-        // Exact: the written pose is read back after the write, so an untouched joint returns it unchanged. A tolerance
-        // takes slow animation (under 0.05 degrees a frame) for no animation and holds the joint still.
         static bool SamePose(Transform t, Vector3 position, Quaternion rotation, Vector3 scale) =>
-            t.localPosition.Equals(position) && t.localRotation.Equals(rotation) && t.localScale.Equals(scale);
+            (t.localPosition - position).sqrMagnitude < 1e-12f && Quaternion.Dot(t.localRotation, rotation) > 0.9999999f && (t.localScale - scale).sqrMagnitude < 1e-12f;
 
         /// <summary>
         /// Rig channel for each mesh blend shape, or -1. Imported MetaHuman shapes are named
