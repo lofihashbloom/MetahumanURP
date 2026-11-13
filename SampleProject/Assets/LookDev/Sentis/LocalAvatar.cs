@@ -1,20 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using LookDev.Avatar;
 using MetaHuman.Dna;
-using SentisModels;
-using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
-// An on-device conversational Taro: text -> Gemma 3 270M -> Supertonic TTS -> NeuroSync curves -> DNA rig controls,
-// all on Unity Inference Engine (Sentis). PhotoShotPlayer keeps the idle performance (blinks, gaze, head, hair) on an
+// An on-device conversational Taro: text -> chat module (SLM) -> speech module (TTS) -> lipsync module (ARKit curves)
+// -> DNA rig controls. The modules are interfaces (AvatarModules.cs); the models behind them are adapter components in
+// Modules/*, each compiled only when its package is installed. The modules used are the adapter components on this
+// GameObject (Add Component > Avatar Modules); -avatarChat / -avatarSpeech / -avatarLipSync <id|none> override a slot
+// from the command line. Without an SLM Taro says what you type, without a voice the line is only shown, and without a
+// lipsync module the mouth stays still. PhotoShotPlayer keeps the idle performance (blinks, gaze, head, hair) on an
 // eyes-only copy of its talk track; this component runs after it and before the rig evaluates, and owns the face.
 [DefaultExecutionOrder(-50)]
 public sealed class LocalAvatar : MonoBehaviour
@@ -26,39 +28,30 @@ public sealed class LocalAvatar : MonoBehaviour
     [Tooltip("Talk track whose blinks and gaze become the idle performance. The scene leaves the shot without a track, so it stays still when this component is not compiled.")]
     public TalkTrack idleSource;
 
-    [Header("Backends")]
-    public BackendType llmBackend = BackendType.GPUCompute;
-    public BackendType ttsBackend = BackendType.GPUCompute;
-    public BackendType lipsyncFeatureBackend = BackendType.GPUCompute;
-    public BackendType lipsyncDecoderBackend = BackendType.GPUCompute;
-
     [Header("Dialogue")]
     [TextArea(2, 5)] public string systemPrompt = "You are Taro, a MetaHuman running on-device with Unity Sentis, and you always reply in one short sentence.";
-    [Range(16, 160)] public int maxNewTokens = 48;
+    [Tooltip("Reply length limit. A reply cut off by it is spoken up to its last full sentence.")] [Range(16, 160)] public int maxNewTokens = 96;
     [Tooltip("Previous exchanges included in the prompt.")] [Range(0, 6)] public int historyTurns = 3;
-    [Tooltip("Speak only the first sentence that says something (a small model can run on).")] public bool firstSentenceOnly = true;
-    [Tooltip("Supertonic voice style: F1-F5, M1-M5.")] public string voiceStyle = "M5";
-    [Range(2, 16)] public int ttsSteps = 6;
-    [Range(.7f, 1.5f)] public float ttsSpeed = 1.05f;
 
     [Header("Face")]
     [Range(0, 2)] public float mouthGain = 1;
     [Tooltip("Brows, squint and cheeks.")] [Range(0, 2)] public float upperFaceGain = 1;
     [Tooltip("Seconds to ease from rest into a line and back.")] [Range(0, 1)] public float attackSeconds = .18f;
     [Range(0, 1.5f)] public float releaseSeconds = .45f;
-    [Tooltip("The curves are 60 fps.")] public int targetFrameRate = 60;
+    [Tooltip("The lipsync modules output 60 fps curves.")] public int targetFrameRate = 60;
 
     [Header("UI")]
     public InputField input;
     public Text replyText, statusText;
 
-    Gemma3Model llm;
-    SupertonicTts tts;
-    NeuroSync.NeuroSyncRunner lipsync;
+    // The modules in use: adapter components on this GameObject, found in Start.
+    IChatModule chat;
+    ISpeechModule speech;
+    ILipSyncModule lipSync;
     ArkitToDna mapper;
-    readonly List<(string user, string reply)> history = new List<(string, string)>();
-    bool ready, busy, answering, releasing;
-    float[] frames, lastCurves;
+    readonly List<ChatTurn> history = new List<ChatTurn>();
+    bool ready, busy, answering, releasing, speaking;
+    FaceCurves frames, lastCurves;
     AudioClip clip;
     CancellationTokenSource generation;
     float playClock, releaseClock;
@@ -128,34 +121,45 @@ public sealed class LocalAvatar : MonoBehaviour
 #endif
         Time.timeScale = 0;   // nothing moves while the models load (seconds of blocking work): the shot starts still
         // Leaving Play mode during a load: OnDestroy has already run, so whatever this load creates afterwards is disposed here.
-        bool Gone() { if (this) return false; DisposeModels(); return true; }
+        bool Gone() { if (this) return false; DisposeModules(); return true; }
+        var failed = new List<string>();
+        // A module that fails to load is released and its slot left empty; the others still work.
+        async Awaitable<T> Load<T>(T module, string label, string what) where T : class, IAvatarModule
+        {
+            if (module == null) return null;
+            Status(label);
+            await Awaitable.NextFrameAsync();
+            if (!this) return module;
+            try
+            {
+                await module.LoadAsync(destroyCancellationToken);
+                return module;
+            }
+            catch (Exception e) when (this && !(e is OperationCanceledException))
+            {
+                Debug.LogException(e, this);
+                module.Dispose();
+                failed.Add(what);
+                return null;
+            }
+        }
         try
         {
-            Status("Loading…");
-            await Awaitable.NextFrameAsync();
+            if (rig)
+            {
+                if (rig.Rig == null) rig.Initialize();
+                mapper = new ArkitToDna(rig.Rig.RawControlNames);
+            }
+            chat = Resolve<IChatModule>("-avatarChat");
+            speech = Resolve<ISpeechModule>("-avatarSpeech");
+            lipSync = Resolve<ILipSyncModule>("-avatarLipSync");
+            Debug.Log($"[LocalAvatar] chat: {AvatarModules.Name(chat)}, speech: {AvatarModules.Name(speech)}, lipsync: {AvatarModules.Name(lipSync)}", this);
+            chat = await Load(chat, "Loading…", "chat model");
             if (Gone()) return;
-            llm = new Gemma3Model(Gpu(llmBackend)) { SystemPrompt = systemPrompt };
-            llm.Load(ModelRoot(typeof(Gemma3Model), Gemma3Model.PackageName));
-            await llm.WarmupAsync();
+            speech = await Load(speech, "Loading voice…", "voice");
             if (Gone()) return;
-
-            Status("Loading voice…");
-            await Awaitable.NextFrameAsync();
+            lipSync = await Load(lipSync, "Loading face…", "lipsync");
             if (Gone()) return;
-            tts = new SupertonicTts(Gpu(ttsBackend), ttsSteps, ttsSpeed);
-            tts.Load(ModelRoot(typeof(SupertonicTts), "com.sky.sentis.supertonic"));
-            await tts.Synthesize("Hi.", SupertonicLanguage.en, voiceStyle);
-            if (Gone()) return;
-
-            Status("Loading face…");
-            await Awaitable.NextFrameAsync();
-            if (Gone()) return;
-            lipsync = await NeuroSync.NeuroSyncRunner.CreateAsync(Gpu(lipsyncFeatureBackend), Gpu(lipsyncDecoderBackend));
-            if (Gone()) return;
-            lipsync.Warmup();
-
-            if (rig.Rig == null) rig.Initialize();
-            mapper = new ArkitToDna(rig.Rig.RawControlNames, NeuroSync.NeuroSyncConstants.NumOutputs);
         }
         catch (Exception e)
         {
@@ -167,20 +171,46 @@ public sealed class LocalAvatar : MonoBehaviour
         }
         Time.timeScale = 1;
         ready = true;
-        Status("Ready");
+        var missing = new List<string>();
+        bool notInstalled = false;
+        void Missing<T>(object module, string what) where T : IAvatarModule
+        {
+            if (module != null) return;
+            if (failed.Contains(what)) { missing.Add($"{what} failed to load, see the Console"); return; }
+            bool installed = AvatarModules.Of<T>().Any();
+            notInstalled |= !installed;
+            missing.Add(installed ? $"no {what} added" : $"no {what} installed");
+        }
+        Missing<IChatModule>(chat, "chat model");
+        Missing<ISpeechModule>(speech, "voice");
+        Missing<ILipSyncModule>(lipSync, "lipsync");
+        string note = chat == null ? " Taro says what you type." : "";
+        if (notInstalled) note += " Install the model packages, see the README.";
+        Status(missing.Count == 0 ? "Ready" : "Ready (" + string.Join(", ", missing) + ")." + note);
         SetInteractable(true);
     }
 
-    static BackendType Gpu(BackendType b) => b == BackendType.GPUCompute && !SystemInfo.supportsComputeShaders ? BackendType.CPU : b;
-
-    // The package's Models~ folder in the editor; StreamingAssets/<package> in a player.
-    static string ModelRoot(Type inPackage, string packageName)
+    // The adapter component on this GameObject, unless the command line names one: an id adds that adapter if it is not
+    // there yet, "none" leaves the slot empty. An id that is not installed falls back to the component.
+    T Resolve<T>(string arg) where T : class, IAvatarModule
     {
-#if UNITY_EDITOR
-        var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(inPackage.Assembly);
-        if (package != null) return Path.Combine(package.resolvedPath, "Models~");
-#endif
-        return Path.Combine(Application.streamingAssetsPath, packageName);
+        var found = GetComponents<T>();
+        var args = Environment.GetCommandLineArgs();
+        int i = Array.IndexOf(args, arg);
+        string id = i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        if (id != null)
+        {
+            if (string.Equals(id, "none", StringComparison.OrdinalIgnoreCase)) return null;
+            var type = AvatarModules.Find<T>(id);
+            if (type != null)
+            {
+                var existing = GetComponent(type);
+                return (T)(object)(existing ? existing : gameObject.AddComponent(type));
+            }
+        }
+        if (found.Length > 1)
+            Debug.LogWarning($"{found.Length} {typeof(T).Name} components on {name}: using {AvatarModules.Name(found[0])}. Remove the others.", this);
+        return found.FirstOrDefault();
     }
 
     public void Submit()
@@ -199,37 +229,56 @@ public sealed class LocalAvatar : MonoBehaviour
         var cancel = generation.Token;
         try
         {
-            Status("Thinking…");
+            if (chat != null) Status("Thinking…");
             float t0 = Time.realtimeSinceStartup;
-            string reply = CleanForSpeech(await llm.GenerateFromPromptAsync(ChatPrompt(question), maxNewTokens, t => { if (replyText) replyText.text = t; }, cancel));
-            cancel.ThrowIfCancellationRequested();
-            if (firstSentenceOnly) reply = FirstSentence(reply);
+            string reply = question;   // without a chat module Taro says what you type
+            if (chat != null)
+            {
+                // The whole reply is shown and spoken: every sentence the model generates goes to the voice.
+                var request = new ChatRequest { SystemPrompt = systemPrompt, History = history.ToArray(), Message = question, MaxNewTokens = maxNewTokens };
+                reply = CompleteSentences(CleanForSpeech(await chat.ReplyAsync(request, t => { if (replyText) replyText.text = CleanForSpeech(t); }, cancel)));
+                cancel.ThrowIfCancellationRequested();
+            }
             if (string.IsNullOrWhiteSpace(reply)) reply = "Sorry, I have nothing to say to that.";
             if (replyText) replyText.text = reply;
 
             float t1 = Time.realtimeSinceStartup;
-            float[] pcm = await tts.Synthesize(reply, DetectLanguage(reply), voiceStyle);
+            var audio = speech != null ? await speech.SynthesizeAsync(reply, cancel) : default;
             cancel.ThrowIfCancellationRequested();
             float t2 = Time.realtimeSinceStartup;
-            int rate = tts.SampleRate;
-            await Awaitable.BackgroundThreadAsync();
-            var audio = NeuroSync.AudioUtils.Prepare(pcm, rate);
-            await Awaitable.MainThreadAsync();
-            cancel.ThrowIfCancellationRequested();
-            var curves = await lipsync.GenerateAsync(audio);
-            cancel.ThrowIfCancellationRequested();
+            FaceCurves curves = null;
+            if (lipSync != null && audio.Duration > 0)
+            {
+                curves = await lipSync.AnimateAsync(audio, cancel);
+                cancel.ThrowIfCancellationRequested();
+            }
             float t3 = Time.realtimeSinceStartup;
-            Status($"LLM {t1 - t0:F2}s / TTS {t2 - t1:F2}s / Lipsync {t3 - t2:F2}s");
+            // The status line names the stages, not the models: which module fills a slot is a code/scene choice and
+            // is only logged.
+            var timing = new List<string>();
+            if (chat != null) timing.Add($"reply {t1 - t0:F2}s");
+            if (speech != null) timing.Add($"voice {t2 - t1:F2}s");
+            if (curves != null) timing.Add($"face {t3 - t2:F2}s");
+            if (timing.Count > 0) Status(string.Join(" / ", timing));   // otherwise the Ready note stays
+            Debug.Log($"[LocalAvatar] {AvatarModules.Name(chat)} {t1 - t0:F2}s / {AvatarModules.Name(speech)} {t2 - t1:F2}s / {AvatarModules.Name(lipSync)} {t3 - t2:F2}s", this);
 
             // Only a reply that is spoken joins the context, and the clip is replaced with its curves (Space replays both).
-            history.Add((question, reply));
-            while (history.Count > historyTurns) history.RemoveAt(0);
+            if (chat != null)
+            {
+                history.Add(new ChatTurn(question, reply));
+                while (history.Count > historyTurns) history.RemoveAt(0);
+            }
             if (clip) Destroy(clip);
-            clip = AudioClip.Create("reply", pcm.Length, 1, rate, false);
-            clip.SetData(pcm, 0);
+            clip = null;
+            if (audio.Duration > 0)
+            {
+                clip = AudioClip.Create("reply", audio.Samples.Length, 1, audio.SampleRate, false);
+                clip.SetData(audio.Samples, 0);
+            }
             lastCurves = curves;
             answering = true;
-            Play();
+            if (clip) Play();
+            else Finish();   // nothing to voice: the text is the answer
         }
         catch (Exception e)
         {
@@ -251,6 +300,7 @@ public sealed class LocalAvatar : MonoBehaviour
     void Play()
     {
         frames = lastCurves;
+        speaking = true;
         playClock = 0;
         releasing = false;
         releaseClock = 0;
@@ -260,7 +310,8 @@ public sealed class LocalAvatar : MonoBehaviour
     // The voice is over: ease the last pose back to rest and hand the field back.
     void Finish()
     {
-        releasing = true;
+        speaking = false;
+        releasing = frames != null;
         releaseClock = 0;
         if (voice) voice.Stop();
         busy = false;
@@ -278,10 +329,10 @@ public sealed class LocalAvatar : MonoBehaviour
         if (keys.escapeKey.wasPressedThisFrame)
         {
             if (generation != null) generation.Cancel();             // stops the reply being prepared
-            else if (frames != null && !releasing) Finish();         // or the one being spoken
+            else if (speaking) Finish();                              // or the one being spoken
         }
         if (busy || (input && input.isFocused)) return;   // while busy the field is disabled but the user may still type
-        if (keys.spaceKey.wasPressedThisFrame && ready && frames == null && lastCurves != null) { busy = true; SetInteractable(false); Play(); }
+        if (keys.spaceKey.wasPressedThisFrame && ready && !speaking && frames == null && clip) { busy = true; SetInteractable(false); Play(); }
         if (keys.cKey.wasPressedThisFrame && shot) shot.cameraMove = !shot.cameraMove;   // the sweep stops where it is
 #endif
     }
@@ -289,32 +340,40 @@ public sealed class LocalAvatar : MonoBehaviour
     void LateUpdate()
     {
         if (mapper == null || !rig) return;
-        if (frames == null) { Apply(null, 0, 0, 0); return; }
-        float last = frames.Length / NeuroSync.NeuroSyncConstants.NumOutputs - 1;
-
         if (releasing)
         {
             releaseClock += Time.deltaTime;
             float k = releaseSeconds > 0 ? 1 - Mathf.SmoothStep(0, 1, releaseClock / releaseSeconds) : 0;
             if (k <= 0) { frames = null; releasing = false; Apply(null, 0, 0, 0); return; }
-            Apply(frames, last, mouthGain * k, upperFaceGain * k);
+            Apply(frames, frames.FrameCount - 1, mouthGain * k, upperFaceGain * k);
             return;
         }
+        if (!speaking) { Apply(null, 0, 0, 0); return; }
 
         // The audio is the master clock, so the lips never drift from the voice.
-        if (voice && voice.isPlaying && voice.clip == clip) playClock = (float)voice.timeSamples / clip.frequency;
+        bool voicePlaying = voice && voice.isPlaying && voice.clip == clip;
+        if (voicePlaying) playClock = (float)voice.timeSamples / clip.frequency;
         else playClock += Time.deltaTime;
+        // Without a face the voice alone sets the end.
+        if (frames == null) { Apply(null, 0, 0, 0); if (!voicePlaying) Finish(); return; }
 
-        float frame = playClock * NeuroSync.NeuroSyncConstants.FaceFps;
-        if (frame >= last) { Apply(frames, last, mouthGain, upperFaceGain); Finish(); return; }
+        float frame = playClock * frames.Fps, last = frames.FrameCount - 1;
+        // The face can end a little before the voice: hold its last pose until the voice is done, so its tail is not cut.
+        if (frame >= last)
+        {
+            Apply(frames, last, mouthGain, upperFaceGain);
+            if (!voicePlaying) Finish();
+            return;
+        }
         float attack = attackSeconds > 0 ? Mathf.SmoothStep(0, 1, playClock / attackSeconds) : 1;
         Apply(frames, frame, mouthGain * attack, upperFaceGain * attack);
     }
 
     // The mouth interior darkens with the jaw, as in the sample shot (its idle track has no jaw).
-    void Apply(float[] curves, float frame, float gain, float upperGain)
+    void Apply(FaceCurves curves, float frame, float gain, float upperGain)
     {
-        mapper.Apply(rig, curves, frame, gain, upperGain);
+        if (curves == null || curves.FrameCount == 0) mapper.Apply(rig, null, 0, 0, 0);
+        else mapper.Apply(rig, curves.Values, curves.Stride, frame, gain, upperGain);
         if (shot) shot.ShadeMouth(mapper.JawOpen);
     }
 
@@ -325,64 +384,33 @@ public sealed class LocalAvatar : MonoBehaviour
         QualitySettings.vSyncCount = previousVSync;
         Application.targetFrameRate = previousFrameRate;
         if (clip) Destroy(clip);
-        DisposeModels();
+        DisposeModules();
     }
 
-    void DisposeModels()
+    // The slots keep their (serialized) modules: only the loaded models are released.
+    void DisposeModules()
     {
-        llm?.Dispose(); llm = null;
-        tts?.Dispose(); tts = null;
-        lipsync?.Dispose(); lipsync = null;
+        chat?.Dispose();
+        speech?.Dispose();
+        lipSync?.Dispose();
     }
 
-    // Gemma 3 has no system role: the system prompt leads the first user turn.
-    string ChatPrompt(string question)
-    {
-        var sb = new StringBuilder();
-        void User(string text)
-        {
-            sb.Append("<start_of_turn>user\n");
-            if (sb.Length == "<start_of_turn>user\n".Length && !string.IsNullOrEmpty(systemPrompt)) sb.Append(systemPrompt).Append("\n\n");
-            sb.Append(text).Append("<end_of_turn>\n");
-        }
-        foreach (var (user, reply) in history) { User(user); sb.Append("<start_of_turn>model\n").Append(reply).Append("<end_of_turn>\n"); }
-        User(question);
-        return sb.Append("<start_of_turn>model\n").ToString();
-    }
-
-    static readonly Regex SentenceEnd = new Regex(@"(?<=[.!?。！？])\s", RegexOptions.Compiled);
-    static readonly Regex Filler = new Regex(@"^(that'?s|what) (a|an) (really )?(great|good|tough|interesting|fun|wonderful) (question|one)|^(of course|sure|great question|good question)[.!]*$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
     static readonly Regex Markup = new Regex(@"[*_#`~>|\[\]{}]|\p{Cs}|\p{So}", RegexOptions.Compiled);
     static readonly Regex Spaces = new Regex(@"\s+", RegexOptions.Compiled);
 
-    // Skips a leading stock phrase ("That's a great question!"), keeps a short sentence ("Yes!") with the next one and
-    // a joke's setup question with its punchline.
-    public static string FirstSentence(string s)
+    // A sentence end (closing quotes and brackets included) followed by a space or the end of the text.
+    static readonly Regex SentenceEnd = new Regex(@"[.!?。！？…~]['""”’)\]]*(?=\s|$)", RegexOptions.Compiled | RegexOptions.RightToLeft);
+
+    // A reply cut off by maxNewTokens ends mid-sentence: it is kept up to its last full sentence, when it has one.
+    public static string CompleteSentences(string s)
     {
-        var parts = SentenceEnd.Split(s.Trim());
-        int i = 0;
-        while (i < parts.Length - 1 && Filler.IsMatch(parts[i].Trim())) i++;
-        string reply = parts[i].Trim();
-        while (i < parts.Length - 1 && reply.Split(' ').Length < 4) reply += " " + parts[++i].Trim();
-        if (reply.EndsWith("?") && i < parts.Length - 1) reply += " " + parts[++i].Trim();
-        return reply;
+        s = s.TrimEnd();
+        var last = SentenceEnd.Match(s);   // right to left: the last sentence end
+        return last.Success ? s.Substring(0, last.Index + last.Length) : s;
     }
 
     // Markdown and emoji are not voiced.
     public static string CleanForSpeech(string s) => string.IsNullOrEmpty(s) ? "" : Spaces.Replace(Markup.Replace(s, " "), " ").Trim();
-
-    public static SupertonicLanguage DetectLanguage(string s)
-    {
-        int hangul = 0, kana = 0;
-        foreach (char c in s)
-        {
-            if (c >= 0xAC00 && c <= 0xD7A3 || c >= 0x1100 && c <= 0x11FF || c >= 0x3130 && c <= 0x318F) hangul++;
-            else if (c >= 0x3040 && c <= 0x30FF) kana++;
-        }
-        if (hangul > 0 && hangul >= kana) return SupertonicLanguage.ko;
-        return kana > 0 ? SupertonicLanguage.ja : SupertonicLanguage.en;
-    }
 
     static bool EnterPressed()
     {

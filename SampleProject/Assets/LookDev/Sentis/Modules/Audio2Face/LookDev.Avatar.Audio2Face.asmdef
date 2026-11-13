@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Audio2Face",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Audio2Face"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_AUDIO2FACE" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.audio2face", "expression": "0.0.0", "define": "LOOKDEV_AUDIO2FACE" }
+    ]
+}
