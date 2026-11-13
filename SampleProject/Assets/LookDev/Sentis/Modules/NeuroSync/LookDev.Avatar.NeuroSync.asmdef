@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.NeuroSync",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.NeuroSync"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_NEUROSYNC" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.neurosync", "expression": "0.0.0", "define": "LOOKDEV_NEUROSYNC" }
+    ]
+}

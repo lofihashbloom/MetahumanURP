@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Gemma3",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Gemma3"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_GEMMA3" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.gemma3-270m-it", "expression": "0.0.0", "define": "LOOKDEV_GEMMA3" }
+    ]
+}

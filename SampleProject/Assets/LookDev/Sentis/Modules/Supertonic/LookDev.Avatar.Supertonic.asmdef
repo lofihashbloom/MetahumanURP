@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Supertonic",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Supertonic"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_SUPERTONIC" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.supertonic", "expression": "0.0.0", "define": "LOOKDEV_SUPERTONIC" }
+    ]
+}

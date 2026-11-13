@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Lfm2",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Lfm2"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_LFM2" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.lfm2.5-350m", "expression": "0.0.0", "define": "LOOKDEV_LFM2" }
+    ]
+}

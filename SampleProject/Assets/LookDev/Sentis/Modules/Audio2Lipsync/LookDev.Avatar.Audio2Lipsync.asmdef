@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Audio2Lipsync",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Audio2Lipsync"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_AUDIO2LIPSYNC" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.audio2lipsync", "expression": "0.0.0", "define": "LOOKDEV_AUDIO2LIPSYNC" }
+    ]
+}

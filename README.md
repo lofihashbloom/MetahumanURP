@@ -44,30 +44,9 @@ Limits: hair shadows on the skin are baked for the rest pose, skin scattering is
 
 ## On-device conversation (Unity Sentis)
 
-`Assets/Taro/TaroSentis.unity` turns Taro into a chat partner that runs entirely on the device through Unity Inference Engine (Sentis): type a line, Taro answers in one sentence, speaks it and lip-syncs it on the DNA rig.
+`Assets/Taro/TaroSentis.unity` turns Taro into a chat partner that runs entirely on the device through Unity Inference Engine (Sentis): type a line, Taro answers, speaks the whole reply and lip-syncs it on the DNA rig. The chat model (SLM), the voice (TTS) and the lipsync model are swappable modules, each installed as its own package. The sample opens without them; Taro then repeats what you type.
 
-- **Reply:** [Gemma 3 270M IT](https://huggingface.co/Sky-Kim/com.sky.sentis.gemma3-270m-it), with the last three exchanges as context.
-- **Voice:** [Supertonic](https://huggingface.co/Sky-Kim/com.sky.sentis.supertonic) TTS (voice M5; Korean and Japanese are detected from the text).
-- **Face:** [NeuroSync](https://huggingface.co/Sky-Kim/com.sky.sentis.neurosync) audio-to-face curves, mapped from ARKit channels to `CTRL_expressions` (`ArkitToDna`) and played on the audio clock with a short ease in and out.
-
-The idle performance (blinks, gaze, head and hair) and the camera orbit of the sample shot are kept; the orbit plays back and forth. While the input field is not focused, **Space** replays the last reply and **C** stops or resumes the camera. **Esc** stops the reply being prepared or spoken. The scene is a copy of `TaroPhoto.unity` with `LocalAvatar` on Taro and the chat UI (reply text at the top, the input field at the bottom).
-
-### Installing the models
-
-The models are not part of the sample, which opens without them; `TaroSentis` then shows Taro standing still with a note to install them. The demo code (`Assets/LookDev/Sentis`) has its own assembly that compiles only when all three packages are installed. Check their licences in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) first; they take about 3 GB through Git LFS.
-
-1. Add the packages, pinned to the tested commits, to `SampleProject/Packages/manifest.json`:
-
-   ```json
-   "com.sky.sentis.gemma3-270m-it": "https://huggingface.co/Sky-Kim/com.sky.sentis.gemma3-270m-it.git#723a071fe1e147dcfa8a5ddad0d667dc13385a1b",
-   "com.sky.sentis.neurosync": "https://huggingface.co/Sky-Kim/com.sky.sentis.neurosync.git#35a3a8710b6a1a377ec4dd63cef19d5b644fb8bb",
-   "com.sky.sentis.supertonic": "https://huggingface.co/Sky-Kim/com.sky.sentis.supertonic.git#c1e1e7f542964ebf4921363c384b20d749c595bf"
-   ```
-
-2. Set **Project Settings > Player > Active Input Handling** to **Both** and restart the Editor: the chat field is a uGUI `InputField`.
-3. Open `Assets/Taro/TaroSentis.unity` and enter Play mode.
-
-In the Editor the models load from the packages. A player build needs the `Models~` folders of the Gemma and Supertonic packages copied to `StreamingAssets/<package name>` (NeuroSync writes its own at build time).
+Installing the models, the available modules, how a module is chosen and how to add one: [On-device conversation](SampleProject/Assets/LookDev/Sentis/README.md). The models keep their own licences, listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
 
 ## Licences
 

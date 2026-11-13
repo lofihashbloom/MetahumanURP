@@ -1,0 +1,14 @@
+{
+    "name": "LookDev.Avatar.Qwen3",
+    "rootNamespace": "LookDev.Avatar",
+    "references": [
+        "LookDev.Sentis",
+        "Unity.InferenceEngine",
+        "Sky.Sentis.Qwen3"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [ "LOOKDEV_QWEN3" ],
+    "versionDefines": [
+        { "name": "com.sky.sentis.qwen3-0.6b", "expression": "0.0.0", "define": "LOOKDEV_QWEN3" }
+    ]
+}

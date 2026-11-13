@@ -1,24 +1,13 @@
 using System.Collections.Generic;
+using LookDev.Avatar;
 using MetaHuman.Dna;
 using UnityEngine;
 
-// Maps ARKit curves (Live Link Face order) onto MetaHuman DNA raw controls. Blinks and gaze are left to the idle
-// performance: NeuroSync zeroes those channels.
+// Maps ARKit curves (Live Link Face order) onto MetaHuman DNA raw controls. Blinks and gaze are not mapped: the idle
+// performance owns the eyes, whatever the lipsync module outputs on those channels.
 public sealed class ArkitToDna
 {
     const string P = "CTRL_expressions.";
-
-    static readonly string[] ArkitNames =
-    {
-        "EyeBlinkLeft", "EyeLookDownLeft", "EyeLookInLeft", "EyeLookOutLeft", "EyeLookUpLeft", "EyeSquintLeft", "EyeWideLeft",
-        "EyeBlinkRight", "EyeLookDownRight", "EyeLookInRight", "EyeLookOutRight", "EyeLookUpRight", "EyeSquintRight", "EyeWideRight",
-        "JawForward", "JawRight", "JawLeft", "JawOpen", "MouthClose", "MouthFunnel", "MouthPucker", "MouthRight", "MouthLeft",
-        "MouthSmileLeft", "MouthSmileRight", "MouthFrownLeft", "MouthFrownRight", "MouthDimpleLeft", "MouthDimpleRight",
-        "MouthStretchLeft", "MouthStretchRight", "MouthRollLower", "MouthRollUpper", "MouthShrugLower", "MouthShrugUpper",
-        "MouthPressLeft", "MouthPressRight", "MouthLowerDownLeft", "MouthLowerDownRight", "MouthUpperUpLeft", "MouthUpperUpRight",
-        "BrowDownLeft", "BrowDownRight", "BrowInnerUp", "BrowOuterUpLeft", "BrowOuterUpRight",
-        "CheekPuff", "CheekSquintLeft", "CheekSquintRight", "NoseSneerLeft", "NoseSneerRight", "TongueOut",
-    };
 
     static readonly HashSet<string> UpperFace = new HashSet<string>
     {
@@ -76,23 +65,21 @@ public sealed class ArkitToDna
 
     readonly string[] controls;
     readonly List<(int channel, int control, float weight, bool upper)> links = new List<(int, int, float, bool)>();
-    readonly int stride, jaw;
+    readonly int jaw;
     readonly float[] values;
 
     /// <summary>The jawOpen value written by the last Apply (0 to 1).</summary>
     public float JawOpen => jaw >= 0 ? Mathf.Clamp01(values[jaw]) : 0;
 
-    // stride: values per frame in the curve buffer.
-    public ArkitToDna(ICollection<string> rigControls, int stride)
+    public ArkitToDna(ICollection<string> rigControls)
     {
-        this.stride = stride;
         var index = new Dictionary<string, int>();
         var names = new List<string>();
         var missing = new List<string>();
-        for (int c = 0; c < ArkitNames.Length; c++)
+        for (int c = 0; c < FaceCurves.LiveLinkNames.Length; c++)
         {
-            if (!Table.TryGetValue(ArkitNames[c], out var targets)) continue;
-            bool upper = UpperFace.Contains(ArkitNames[c]);
+            if (!Table.TryGetValue(FaceCurves.LiveLinkNames[c], out var targets)) continue;
+            bool upper = UpperFace.Contains(FaceCurves.LiveLinkNames[c]);
             foreach (var (control, weight) in targets)
             {
                 string full = P + control;
@@ -107,8 +94,9 @@ public sealed class ArkitToDna
         if (missing.Count > 0) Debug.LogWarning("DNA controls not in this rig: " + string.Join(", ", missing));
     }
 
-    // One interpolated frame; null writes the rest pose.
-    public void Apply(DnaRigDriver rig, float[] frames, float frame, float gain, float upperGain = 1)
+    // One interpolated frame of curves whose frames are `stride` values wide (channels 0..51 in Live Link order);
+    // null writes the rest pose.
+    public void Apply(DnaRigDriver rig, float[] frames, int stride, float frame, float gain, float upperGain = 1)
     {
         System.Array.Clear(values, 0, values.Length);
         if (frames != null)
